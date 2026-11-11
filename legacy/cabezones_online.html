@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cabezones de la Tec</title>
+    <title>Cabezones de la Tec - Online</title>
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <style>
         body {
@@ -208,10 +208,11 @@
         .cr-c b { display: block; font-size: 9px; color: #ffd166; } .cr-c small { display: block; font-size: 7px; color: #9ca3af; margin-top: 3px; }
         #touch { position: fixed; inset: 0; pointer-events: none; z-index: 6; }
         .tg { position: fixed; bottom: 14px; display: flex; gap: 12px; pointer-events: none; }
-        .tg.l { left: 14px; } .tg.l2 { left: 222px; } .tg.r { right: 14px; } .tg.r2 { right: 222px; }
+        .tg.l { left: 14px; } .tg.l2 { left: 190px; } .tg.r { right: 14px; } .tg.r2 { right: 190px; }
         #touch.solo .l2 { left: auto; right: 14px; } #touch.solo .p2 { display: none; }
         .tb { pointer-events: auto; touch-action: none; width: clamp(54px, 12vmin, 88px); height: clamp(54px, 12vmin, 88px); border-radius: 50%; border: 4px solid #90e0ef; background: rgba(17,138,178,.55); color: #fff; font-size: 22px; }
-        .tb.sup { background: rgba(255,209,102,.65); border-color: #ffd166; } .tb.big { background: rgba(247,37,133,.6); border-color: #ff99c8; } .tb:active { transform: scale(.92); filter: brightness(1.4); }
+        .tb.big { background: rgba(247,37,133,.6); border-color: #ff99c8; } .tb:active { transform: scale(.92); filter: brightness(1.4); }
+        .net-ta { width: min(760px, 92vw); height: 84px; font-size: 11px; background: #0b1020; color: #9dff4a; border: 2px solid #4a5068; border-radius: 8px; padding: 8px; word-break: break-all; resize: none; margin-top: 6px; }
     </style>
 </head>
 <body>
@@ -240,6 +241,7 @@
             <button class="arcade-btn blue" onclick="startSelection('PVP')">1 VS 1 LOCAL</button>
             <button class="arcade-btn blue" onclick="startSelection('CPU', true)">TORNEO VS CPU</button>
             <button class="arcade-btn" onclick="startSelection('PVP', true)">TORNEO 1 VS 1</button>
+            <button class="arcade-btn col-span-2" onclick="showOnline()">JUGAR ONLINE</button>
             <button class="arcade-btn blue" onclick="showCredits()">CRÉDITOS</button>
             <button class="arcade-btn" onclick="showSettings()">AJUSTES</button>
         </div>
@@ -247,14 +249,14 @@
             <div>
                 <p class="text-cyan-400 mb-2">JUGADOR 1</p>
                 <p>Mover: A / D &nbsp; Saltar: W</p>
-                <p class="text-yellow-300 mt-1">Patear: F &nbsp; SÚPER: G</p>
+                <p class="text-yellow-300 mt-1">Patear: F &nbsp;(mantené = SÚPER)</p>
             </div>
             <div>
                 <p class="text-pink-400 mb-2">JUGADOR 2</p>
                 <p>Mover: ◄ / ► &nbsp; Saltar: ▲</p>
-                <p class="text-yellow-300 mt-1">Patear: ENTER &nbsp; SÚPER: . (punto)</p>
+                <p class="text-yellow-300 mt-1">Patear: ENTER o . &nbsp;(mantené = SÚPER)</p>
             </div>
-            <p class="col-span-2 text-gray-400">El SÚPER se carga solo (barra bajo el nombre) · Contra la CPU podés usar cualquiera de los dos juegos de teclas · Pausa: P / ESC</p>
+            <p class="col-span-2 text-gray-400">Contra la CPU podés usar cualquiera de los dos juegos de teclas · Pausa: P / ESC</p>
         </div>
     </div>
 
@@ -356,11 +358,14 @@
     let boxTimer = 200, lastBoxType = '', goalSide = -1, flashT = 0, flashCol = '#fff';
     const PU_STYLE = { superJump: ['#06d6a0', '▲'], freeze: ['#90e0ef', '❄'], giantGoal: ['#ffd166', '▣'], speedBoost: ['#ef476f', '»'], bigBall: ['#ffffff', '●'], moon: ['#b8c0ff', '☾'] };
     let fx = [], shake = 0, countdown = 0, sfxOff = false, musicOff = false, actx = null;
+    const net = { on: false, host: false, active: false, pc: null, dS: null, dC: null, opened: 0, myChar: null, otherChar: null, stSel: false, rq: 0, iq: 0, lastN: 0, sq: 0, snapN: 0, since: 0, base: null, remote: { left: false, right: false, jump: false, kickHold: false } };
+    let netEv = [];
     try { sfxOff = localStorage.getItem('cdt_sfx') === '0'; musicOff = localStorage.getItem('cdt_music') === '0'; } catch (e) {}
     let stats = [], rec = [], replayData = null, replayI = 0, musicOn = false, mStep = 0;
     const newStats = () => [0, 1].map(() => ({ g: 0, k: 0, s: 0, b: 0, p: 0 }));
-    function burst(x, y, col, n = 8, sp = 5) { for (let i = 0; i < n; i++) fx.push({ x, y, vx: rnd(-sp, sp), vy: rnd(-sp, sp * 0.3), life: rnd(18, 36), col, s: rnd(3, 7) }); }
+    function burst(x, y, col, n = 8, sp = 5) { if (net.on && net.host) netEv.push(['b', Math.round(x), Math.round(y), col, n, sp]); for (let i = 0; i < n; i++) fx.push({ x, y, vx: rnd(-sp, sp), vy: rnd(-sp, sp * 0.3), life: rnd(18, 36), col, s: rnd(3, 7) }); }
     function sfx(k) {
+        if (net.on && net.host) netEv.push(['f', k]);
         if (sfxOff) return;
         try {
             actx = actx || new (window.AudioContext || window.webkitAudioContext)();
@@ -383,10 +388,11 @@
 
     const keys = {};
     window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
-    window.addEventListener('keydown', e => { keys[e.code] = true; if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', 'Slash'].includes(e.code)) e.preventDefault(); if ((e.code === 'KeyP' || e.code === 'Escape') && !e.repeat) togglePause(); if (gameState === 'REPLAY' && !e.repeat && ['Space', 'Enter', 'KeyF'].includes(e.code)) endReplay(); });
+    window.addEventListener('keydown', e => { if (e.target && e.target.tagName === 'TEXTAREA') return; keys[e.code] = true; if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', 'Slash'].includes(e.code)) e.preventDefault(); if ((e.code === 'KeyP' || e.code === 'Escape') && !e.repeat) togglePause(); if (gameState === 'REPLAY' && !e.repeat && ['Space', 'Enter', 'KeyF'].includes(e.code)) endReplay(); });
     window.addEventListener('keyup', e => { keys[e.code] = false; });
 
-    function announce(text, color = '#ffb703') { banner = { text, timer: 150, color }; }
+    function announce(text, color = '#ffb703') { if (net.on && net.host) netEv.push(['a', text, color]); banner = { text, timer: 150, color }; }
+    function ring(x, y, col, life) { fx.push({ ring: true, x, y, vx: 0, vy: 0, life, col }); if (net.on && net.host) netEv.push(['g', Math.round(x), Math.round(y), col, life]); }
     function touch(p) { if (lastTouch !== p) { prevTouch = lastTouch; lastTouch = p; } }
 
     // Colisión círculo vs travesaño (cápsula). Evita atravesarlo y rebota arriba, abajo y por el borde.
@@ -416,7 +422,7 @@
             this.x = rnd(350, CW - 350); this.y = rnd(GROUND_Y - 300, GROUND_Y - 90);
             this.type = pick(Object.keys(PU_TYPES).filter(t => t !== lastBoxType)); lastBoxType = this.type;
             this.life = rnd(600, 900); this.active = true;
-            burst(this.x, this.y, '#ffffff', 26, 9); fx.push({ ring: true, x: this.x, y: this.y, vx: 0, vy: 0, life: 26, col: '#ffd166' }); sfx('pu');
+            burst(this.x, this.y, '#ffffff', 26, 9); ring(this.x, this.y, '#ffd166', 26); sfx('pu');
         }
         update() { if (--this.life <= 0) { this.active = false; boxTimer = rnd(200, 360); } }
         draw() {
@@ -438,7 +444,7 @@
             this.startX = x; this.x = x; this.y = GROUND_Y - PLAYER_RADIUS; this.vx = 0; this.vy = 0;
             this.radius = PLAYER_RADIUS; this.isP1 = isP1; this.isCPU = isCPU; this.data = data;
             this.facing = isP1 ? 1 : -1; this.kickAnimTimer = 0; this.kickCooldown = 0; this.chargeTimer = 0;
-            this.grounded = true; this.frozen = false; this.jumpForce = BASE_JUMP_FORCE; this.moveSpeed = this.baseSpeed = MOVE_SPEED; this.meter = 40; this.prevKick = this.prevSup = false;
+            this.grounded = true; this.frozen = false; this.jumpForce = BASE_JUMP_FORCE; this.moveSpeed = this.baseSpeed = MOVE_SPEED; this.cpuTarget = 12;
         }
         resetPos() {
             this.x = this.startX; this.y = GROUND_Y - this.radius; this.vx = this.vy = 0;
@@ -454,21 +460,22 @@
             return false;
         }
         getInputs() {
-            if (this.frozen) return { left: false, right: false, jump: false, kick: false, sup: false };
+            if (this.frozen) return { left: false, right: false, jump: false, kickHold: false };
+            if (net.on) return this.isP1 === net.host ? localInput() : net.remote;
             if (!this.isCPU) {
                 const any = a => a.some(c => keys[c]);
-                const s1 = { left: any(['KeyA']), right: any(['KeyD']), jump: any(['KeyW']), kick: any(['KeyF', 'Space']), sup: any(['KeyG', 'KeyH']) };
-                const s2 = { left: any(['ArrowLeft']), right: any(['ArrowRight']), jump: any(['ArrowUp']), kick: any(['Enter', 'NumpadEnter', 'Numpad0', 'ShiftRight']), sup: any(['Period', 'Slash', 'NumpadDecimal', 'Comma']) };
+                const s1 = { left: any(['KeyA']), right: any(['KeyD']), jump: any(['KeyW']), kickHold: any(['KeyF', 'KeyG', 'Space']) };
+                const s2 = { left: any(['ArrowLeft']), right: any(['ArrowRight']), jump: any(['ArrowUp']), kickHold: any(['Enter', 'NumpadEnter', 'Numpad0', 'Period', 'Slash', 'ShiftRight']) };
                 if (!this.isP1) return s2;
-                return currentMode === 'CPU' ? { left: s1.left || s2.left, right: s1.right || s2.right, jump: s1.jump || s2.jump, kick: s1.kick || s2.kick, sup: s1.sup || s2.sup } : s1;
+                return currentMode === 'CPU' ? { left: s1.left || s2.left, right: s1.right || s2.right, jump: s1.jump || s2.jump, kickHold: s1.kickHold || s2.kickHold } : s1;
             }
-            const i = { left: false, right: false, jump: false, kick: false, sup: false };
+            const i = { left: false, right: false, jump: false, kickHold: false };
             const L = this.lvl === undefined ? 1 : this.lvl;
             if (!this.thinkT || --this.thinkT <= 0) { this.thinkT = [16, 8, 3][L]; this.noise = rnd(-1, 1) * [90, 40, 8][L]; }
             const atk = this.isP1 ? 1 : -1, dx = (ball.x + this.noise - atk * 48) - this.x; // se ubica detrás de la pelota
             if (dx < -14) i.left = true; else if (dx > 14) i.right = true; else this.facing = atk;
             if (ball.y - this.y < -60 && Math.abs(ball.x - this.x) < [110, 150, 190][L]) i.jump = true;
-            if (this.facing === atk && this.canReach() && Math.random() < [0.1, 0.3, 0.6][L]) { if (this.meter >= 100 && Math.random() < [0.2, 0.5, 0.8][L]) i.sup = true; else i.kick = true; }
+            if (this.facing === atk && this.canReach()) i.kickHold = this.chargeTimer < this.cpuTarget;
             return i;
         }
         update() {
@@ -479,12 +486,12 @@
                 if (inp.right) { this.vx += 1.5; this.facing = 1; mv = true; }
                 this.vx = Math.max(-this.moveSpeed, Math.min(this.moveSpeed, this.vx));
                 if (inp.jump && this.grounded) { this.vy = -this.jumpForce; this.grounded = false; }
-                if (inp.kick && !this.prevKick) this.executeKick(false);                       // patada: al apretar
-                if (inp.sup && !this.prevSup) { if (this.meter >= 100) this.executeKick(true); else sfx('bounce'); }  // súper: solo si la barra está llena
-            }
-            this.prevKick = inp.kick; this.prevSup = inp.sup;
-            if (!this.frozen && this.meter < 100) { this.meter = Math.min(100, this.meter + 100 / 600); if (this.meter >= 100 && !this.isCPU) { sfx('pu'); burst(this.x, this.y, '#ff006e', 14, 6); } }
-            this.chargeTimer = this.meter >= 100 ? MAX_CHARGE : Math.min(this.meter, 99) * 0.4;
+                if (inp.kickHold) { if (this.chargeTimer < MAX_CHARGE) this.chargeTimer++; }
+                else if (this.chargeTimer > 0) {
+                    this.executeKick(this.chargeTimer >= SUPER_CHARGE); this.chargeTimer = 0;
+                    this.cpuTarget = Math.random() < [0.05, 0.18, 0.3][this.lvl === undefined ? 1 : this.lvl] ? SUPER_CHARGE + 3 : pick([3, 8, 15, 30]);
+                }
+            } else this.chargeTimer = 0;
             if (!mv) this.vx *= FRICTION;
             this.vy += GRAVITY * gravityMul; this.x += this.vx; this.y += this.vy; this.grounded = false;
             if (this.y + this.radius >= GROUND_Y) { this.y = GROUND_Y - this.radius; this.vy = 0; this.grounded = true; }
@@ -504,7 +511,7 @@
             ball.vx = this.facing * Math.cos(ang) * spd + this.vx * 0.3;
             ball.vy = -Math.sin(ang) * spd + this.vy * 0.2;
             ball.superType = v; ball.curveDir = Math.random() < 0.5 ? -1 : 1; ball.viaBar = false;
-            touch(this); stats[this.isP1 ? 0 : 1].k++; if (sup) { stats[this.isP1 ? 0 : 1].s++; this.meter = 0; } else this.meter = Math.min(100, this.meter + 8); sfx(sup ? 'super' : 'kick'); burst(ball.x, ball.y, sup ? v.col : '#ffffff', sup ? 22 : 7, sup ? 7 : 4); if (sup) shake = 14;
+            touch(this); stats[this.isP1 ? 0 : 1].k++; if (sup) stats[this.isP1 ? 0 : 1].s++; sfx(sup ? 'super' : 'kick'); burst(ball.x, ball.y, sup ? v.col : '#ffffff', sup ? 22 : 7, sup ? 7 : 4); if (sup) shake = 14;
         }
         draw() {
             const R = this.radius, k = R / 38, wx = this.x, wy = this.y, r = 38, f = this.facing, d = this.data, x = 0, y = 0, st = d.style, hi = headImg(d), sc = hi ? Math.min(92 / hi.naturalHeight, 88 / hi.naturalWidth) * (d.headScale || 1) : 1, up = hi ? Math.max(0, hi.naturalHeight * sc - 76) + 12 : 0;
@@ -553,7 +560,7 @@
             }
             if (st === 'visor') { ctx.fillStyle = 'rgba(0,245,212,0.55)'; ctx.fillRect(x - r + 4, y - 15, r * 2 - 8, 20); ctx.strokeRect(x - r + 4, y - 15, r * 2 - 8, 20); ctx.fillStyle = '#000'; ctx.fillRect(x + f * 12, y - r - 10, 3, 12); }
             ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.fillRect(x + f * 36 - (f < 0 ? 6 : 0), y - 2, 6, 9);
-            const mx = x + f * 18, open = this.kickAnimTimer > 0 || this.chargeTimer >= SUPER_CHARGE;
+            const mx = x + f * 18, open = this.kickAnimTimer > 0 || this.chargeTimer > 20;
             rr(mx - 11, y + 9, 22, open ? 16 : 10, 3); ctx.fillStyle = open ? '#000' : '#fff'; ctx.fill(); ctx.lineWidth = 3; ctx.stroke();
             if (st === 'lollipop') { ctx.beginPath(); ctx.moveTo(mx + f * 6, y + 15); ctx.lineTo(mx + f * 24, y + 3); ctx.stroke(); ctx.fillStyle = d.stripeColor; ctx.beginPath(); ctx.arc(mx + f * 26, y + 1, 12, 0, 7); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(mx + f * 26, y + 1, 6, 0, 7); ctx.fill(); }
             if (st === 'mate') { ctx.fillStyle = '#7f5539'; rr(x + f * (r - 4) - (f < 0 ? 16 : 0), y + 12, 16, 20, 4); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#3a5a40'; ctx.fillRect(x + f * (r - 4) - (f < 0 ? 16 : 0) + 2, y + 12, 12, 4); }
@@ -612,21 +619,33 @@
             }
         }
         draw() {
-            const r = this.radius, st = this.superType;
-            const h = Math.max(0, GROUND_Y - (this.y + r));
+            const r = this.radius, st = this.superType, h = Math.max(0, GROUND_Y - (this.y + r));
             ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(this.x, GROUND_Y + 6, r * Math.max(0.35, 1 - h / 600), 6, 0, 0, 7); ctx.fill();
             ctx.save(); ctx.translate(this.x, this.y);
-            if (st) {
-                ctx.fillStyle = st.col + '66';
-                ctx.beginPath(); ctx.arc(-this.vx * 0.6, -this.vy * 0.6, r * 1.2, 0, 7); ctx.fill();
-                ctx.beginPath(); ctx.arc(-this.vx * 0.3, -this.vy * 0.3, r * 1.1, 0, 7); ctx.fill();
+            if (st) {   // estela de color del súper tiro
+                for (let k = 3; k >= 1; k--) { ctx.fillStyle = st.col + (k === 3 ? '33' : k === 2 ? '55' : '88'); ctx.beginPath(); ctx.arc(-this.vx * 0.28 * k, -this.vy * 0.28 * k, r * (1.35 - k * 0.1), 0, 7); ctx.fill(); }
+                ctx.shadowColor = st.col; ctx.shadowBlur = 24;
             }
-            ctx.rotate(this.angle);
-            ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.fillStyle = st ? st.col : '#fff'; ctx.fill();
-            ctx.lineWidth = 3; ctx.strokeStyle = '#000'; ctx.stroke();
-            ctx.fillStyle = st ? '#ffb703' : '#000';
-            ctx.beginPath(); ctx.arc(0, 0, r * 0.38, 0, 7); ctx.fill();
-            for (let k = 0; k < 5; k++) { const a = k * 1.2566; ctx.beginPath(); ctx.arc(Math.cos(a) * r * 0.8, Math.sin(a) * r * 0.8, r * 0.16, 0, 7); ctx.fill(); }
+            const base = ctx.createRadialGradient(-r * 0.35, -r * 0.4, r * 0.1, 0, 0, r);
+            base.addColorStop(0, '#ffffff'); base.addColorStop(0.6, st ? '#fff4e0' : '#f2f4f8'); base.addColorStop(1, st ? '#e8b36b' : '#aeb6c4');
+            ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.fillStyle = base; ctx.fill(); ctx.shadowBlur = 0;
+            // parches y costuras (giran con la pelota)
+            ctx.save(); ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.clip(); ctx.rotate(this.angle);
+            const pc = st ? st.col : '#1b1f2a', pent = (cx, cy, rad, rot) => { ctx.beginPath(); for (let k = 0; k < 5; k++) { const a = rot + k * 1.2566; ctx.lineTo(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad); } ctx.closePath(); ctx.fill(); };
+            ctx.strokeStyle = 'rgba(27,31,42,0.55)'; ctx.lineWidth = Math.max(1.5, r * 0.07); ctx.lineCap = 'round'; ctx.beginPath();
+            for (let k = 0; k < 5; k++) {
+                const v = -1.5708 + k * 1.2566, e = v + 0.6283, ex = Math.cos(e) * r * 0.98, ey = Math.sin(e) * r * 0.98;
+                ctx.moveTo(Math.cos(v) * r * 0.36, Math.sin(v) * r * 0.36); ctx.lineTo(Math.cos(v) * r * 0.68, Math.sin(v) * r * 0.68);
+                ctx.lineTo(Math.cos(v + 0.6283) * r * 0.86, Math.sin(v + 0.6283) * r * 0.86); ctx.moveTo(Math.cos(v) * r * 0.68, Math.sin(v) * r * 0.68); ctx.lineTo(Math.cos(v - 0.6283) * r * 0.86, Math.sin(v - 0.6283) * r * 0.86);
+            }
+            ctx.stroke(); ctx.fillStyle = pc; pent(0, 0, r * 0.37, -1.5708);
+            for (let k = 0; k < 5; k++) { const e = -1.5708 + k * 1.2566 + 0.6283; pent(Math.cos(e) * r * 1.0, Math.sin(e) * r * 1.0, r * 0.36, e + 3.1416); }
+            ctx.restore();
+            // sombreado de esfera y brillo
+            const sh = ctx.createRadialGradient(-r * 0.3, -r * 0.35, r * 0.25, 0, 0, r * 1.02); sh.addColorStop(0, 'rgba(255,255,255,0)'); sh.addColorStop(0.65, 'rgba(0,0,0,0.04)'); sh.addColorStop(1, 'rgba(0,0,0,0.4)');
+            ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.fillStyle = sh; ctx.fill();
+            ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.beginPath(); ctx.ellipse(-r * 0.4, -r * 0.44, r * 0.22, r * 0.12, -0.75, 0, 7); ctx.fill();
+            ctx.lineWidth = Math.max(2, r * 0.1); ctx.strokeStyle = '#0b0d12'; ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.stroke();
             ctx.restore();
         }
     }
@@ -648,9 +667,26 @@
         if (d >= min || d === 0) return;
         const nx = dx / d, ny = dy / d, o = (min - d) / 2;
         a.x -= nx * o; a.y -= ny * o; b.x += nx * o; b.y += ny * o;
-        const rel = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
-        if (rel < 0) { const j = -1.1 * rel / 2; b.vx += j * nx; b.vy += j * ny; a.vx -= j * nx; a.vy -= j * ny; }
-        if (ny > 0.6) a.grounded = true; else if (ny < -0.6) b.grounded = true;
+        if (Math.abs(ny) > 0.6) {                      // uno arriba del otro: rebote vertical
+            const rel = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
+            if (rel < 0) { const j = -1.1 * rel / 2; b.vx += j * nx; b.vy += j * ny; a.vx -= j * nx; a.vy -= j * ny; }
+            if (ny > 0.6) a.grounded = true; else b.grounded = true;
+        } else if ((a.vx - b.vx) * Math.sign(nx) > 0) { // lado a lado: choque parejo, el que llega primero no arrastra al otro
+            const avg = (a.vx + b.vx) / 2; a.vx = b.vx = avg * 0.3;
+        }
+    }
+    // Si la pelota queda aplastada entre los dos jugadores, sale disparada hacia arriba (no se traba ni se arrastra hasta el arco)
+    let sqCd = 0;
+    function sandwich() {
+        if (sqCd > 0) { sqCd--; return; }
+        const b = ball, d1 = Math.hypot(b.x - player1.x, b.y - player1.y), d2 = Math.hypot(b.x - player2.x, b.y - player2.y);
+        if (d1 > player1.radius + b.radius + 6 || d2 > player2.radius + b.radius + 6) return;
+        if ((b.x - player1.x) * (b.x - player2.x) >= 0) return;          // no está entre los dos
+        sqCd = 24; b.superType = null; b.viaBar = false;
+        b.vy = -rnd(11, 14); b.vx = rnd(-1.5, 1.5) + (player1.vx + player2.vx) * 0.15; b.y -= 6;
+        const dir = Math.sign(player2.x - player1.x) || 1;
+        player1.vx = -dir * 3; player2.vx = dir * 3; player1.x -= dir * 4; player2.x += dir * 4;
+        burst(b.x, b.y, '#ffffff', 10, 4); sfx('bounce');
     }
 
     function endPowerup() {
@@ -671,7 +707,7 @@
         else { gravityMul = 0.5; announce(`¡GRAVEDAD LUNAR POR CULPA ${de(A)}!`, '#b8c0ff'); }
         activePowerup = { type, timer: dur, max: dur, owner: p }; sfx('pu');
         const col = PU_STYLE[type][0]; burst(p.x, p.y, col, 40, 10); burst(p.x, p.y, '#ffffff', 16, 6);
-        for (let k = 0; k < 3; k++) fx.push({ ring: true, x: p.x, y: p.y, vx: 0, vy: 0, life: 28 + k * 5, col });
+        for (let k = 0; k < 3; k++) ring(p.x, p.y, col, 28 + k * 5);
         shake = 12; flashT = 16; flashCol = col; stats[p.isP1 ? 0 : 1].p++;
     }
 
@@ -723,11 +759,13 @@
     function startReplay() { replayData = rec.slice(-150); if (replayData.length < 40) { endReplay(); return; } replayI = 0; fx = []; gameState = 'REPLAY'; }
     function endReplay() { replayData = null; afterGoal(); }
     function applyReplay() {
+        if (!replayData) return;
         const f = replayData[Math.min(Math.floor(replayI), replayData.length - 1)];
         ball.x = f.b[0]; ball.y = f.b[1]; ball.angle = f.b[2]; ball.superType = f.b[3]; ball.radius = f.b[4];
         [player1, player2].forEach((q, k) => { const d = f.p[k]; q.x = d[0]; q.y = d[1]; q.facing = d[2]; q.kickAnimTimer = d[3]; q.chargeTimer = d[4]; q.frozen = d[5]; });
     }
-    function step() {
+    function step() { stepCore(); if (net.on && net.host && net.active && (++net.snapN % 2 === 0)) netSendState(); }
+    function stepCore() {
         matchFrames++; shake *= 0.9;
         fx = fx.filter(p => (p.x += p.vx, p.y += p.vy, p.vy += (p.ring ? 0 : 0.25), p.age = (p.age || 0) + 1, --p.life > 0));
         if (barCooldown > 0) barCooldown--;
@@ -751,7 +789,7 @@
             }
             updateScoreUI();
         }
-        player1.update(); player2.update(); pushPlayers(player1, player2); ball.update();
+        player1.update(); player2.update(); pushPlayers(player1, player2); ball.update(); sandwich();
         if (powerupBox.active) {
             powerupBox.update();
             let who = null;
@@ -888,6 +926,7 @@
         ctx.save(); ctx.shadowColor = '#fff'; ctx.shadowBlur = 12; ctx.fillStyle = '#fff'; fit(timeText(), 34, 220); ctx.fillText(timeText(), CW / 2, 98); ctx.restore();
     }
     function togglePause() {
+        if (net.on) return;   // online no se pausa
         if (gameState === 'PAUSED') { gameState = prePause; uiPause.classList.add('hidden'); acc = 0; lastT = performance.now(); }
         else if (gameState === 'PLAYING' || gameState === 'GOAL_PAUSE' || gameState === 'REPLAY') { prePause = gameState; gameState = 'PAUSED'; uiPause.classList.remove('hidden'); for (const k in keys) keys[k] = false; }
     }
@@ -998,6 +1037,7 @@
     function frame(t) {
         requestAnimationFrame(frame);
         const dt = Math.min(t - lastT, 100); lastT = t;
+        if (net.on && !net.host && net.active) { acc += dt; while (acc >= STEP) { acc -= STEP; guestTick(); } render(t); return; }
         if (gameState === 'PAUSED') { render(t); return; }
         if (gameState === 'MENU' || gameState === 'SELECT' || gameState === 'GAMEOVER') { menuScene(t); return; }
         acc += dt; while (acc >= STEP) { acc -= STEP; step(); }
@@ -1028,7 +1068,7 @@
     function hideAll() { [uiMenu, uiSelect, uiGameover, uiPause, info, touchEl].forEach(e => e.classList.add('hidden')); uiHud.classList.add('hidden'); }
     function showInfo(html) { hideAll(); info.innerHTML = html; info.classList.remove('hidden'); }
     const BTN = 'arcade-btn mt-4 text-sm py-2 px-6';
-    function goToMenu() { hideAll(); gameState = 'MENU'; tour = null; curMatch = null; uiMenu.classList.remove('hidden'); }
+    function goToMenu() { if (net.on || net.pc) netClose(); hideAll(); gameState = 'MENU'; tour = null; curMatch = null; uiMenu.classList.remove('hidden'); }
     const TOUR_SIZE = 8; // cuartos de final; para ampliar el torneo (16 = octavos) alcanza con cambiar este número
     function startSelection(mode, tourney) {
         flow = { mode, tour: !!tourney, size: TOUR_SIZE, humans: mode === 'CPU' ? 1 : 2 }; currentMode = mode; gameState = 'SELECT';
@@ -1054,7 +1094,7 @@
         showInfo(`<h2 class="text-2xl text-yellow-300 mb-6 text-center">AJUSTES</h2>${row('MÚSICA', !musicOff, 'toggleMusic()')}${row('SONIDO (EFECTOS)', !sfxOff, 'toggleSfx()')}${row('CONTROLES TÁCTILES', touchOn, 'toggleTouch()')}<p class="text-xs text-gray-400 mb-4 text-center">También podés silenciar en cualquier momento<br>con los botones de arriba a la derecha.</p><button class="${BTN}" onclick="goToMenu()">VOLVER</button>`);
     }
     const TB = (code, t, cls = '') => `<button class="tb ${cls}" data-k="${code}">${t}</button>`;
-    touchEl.innerHTML = `<div class="tg l">${TB('KeyA', '◄')}${TB('KeyD', '►')}</div><div class="tg l2">${TB('KeyW', '▲')}${TB('KeyF', '⚽', 'big')}${TB('KeyG', '★', 'sup')}</div><div class="tg r p2">${TB('ArrowLeft', '◄')}${TB('ArrowRight', '►')}</div><div class="tg r2 p2">${TB('ArrowUp', '▲')}${TB('Enter', '⚽', 'big')}${TB('Period', '★', 'sup')}</div>`;
+    touchEl.innerHTML = `<div class="tg l">${TB('KeyA', '◄')}${TB('KeyD', '►')}</div><div class="tg l2">${TB('KeyW', '▲')}${TB('KeyF', '⚽', 'big')}</div><div class="tg r p2">${TB('ArrowLeft', '◄')}${TB('ArrowRight', '►')}</div><div class="tg r2 p2">${TB('ArrowUp', '▲')}${TB('Enter', '⚽', 'big')}</div>`;
     touchEl.querySelectorAll('.tb').forEach(b => { const k = b.dataset.k, on = e => { e.preventDefault(); keys[k] = true; }, off = e => { e.preventDefault(); keys[k] = false; };
         b.addEventListener('pointerdown', on); ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => b.addEventListener(ev, off)); });
     touchEl.addEventListener('contextmenu', e => e.preventDefault());
@@ -1062,7 +1102,7 @@
         const rows = [['Goles', 'g'], ['Patadas', 'k'], ['Súper tiros', 's'], ['Travesaños', 'b'], ['Power-ups', 'p']];
         return `<table class="stats"><tr><th>${p1Choice.nickname}</th><th></th><th>${p2Choice.nickname}</th></tr>${rows.map(([t, k]) => `<tr><td>${stats[0][k]}</td><td>${t}</td><td>${stats[1][k]}</td></tr>`).join('')}</table>`;
     }
-    const needed = () => flow.mode === 'CPU' ? 1 : (flow.tour ? flow.humans : 2);
+    const needed = () => flow.online ? 1 : flow.mode === 'CPU' ? 1 : (flow.tour ? flow.humans : 2);
     function beginPick() { picks = []; hideAll(); uiSelect.classList.remove('hidden'); initRosterUI(); pickTitle(); }
     function pickTitle() {
         const t = document.getElementById('select-title'), n = picks.length + 1;
@@ -1073,7 +1113,7 @@
     function selectChar(ch) {
         if (picks.some(p => p.id === ch.id)) return;
         picks.push(ch);
-        if (picks.length < needed()) pickTitle(); else chooseStadium();
+        if (picks.length < needed()) pickTitle(); else if (flow.online) netPicked(); else chooseStadium();
     }
     function chooseStadium() {
         showInfo(`<h2 class="text-2xl text-yellow-300 mb-5 text-center">ELIGE EL ESTADIO</h2><div id="st-grid"></div><button class="${BTN}" onclick="goToMenu()">CANCELAR</button>`);
@@ -1086,6 +1126,7 @@
         });
     }
     function startFlow() {
+        if (flow.online) { p1Choice = net.myChar; p2Choice = net.otherChar; currentMode = 'PVP'; initMatch(); return; }
         if (flow.tour) { buildTour(); return; }
         p1Choice = picks[0]; currentMode = flow.mode;
         p2Choice = flow.mode === 'CPU' ? pick(ROSTER.filter(c => c.id !== p1Choice.id)) : picks[1];
@@ -1132,7 +1173,7 @@
     function initMatch() {
         hideAll(); uiHud.classList.remove('hidden');
         MAX_GOALS = settings.goals; MATCH_DURATION = settings.time;
-        if (touchOn) { touchEl.classList.remove('hidden'); touchEl.classList.toggle('solo', currentMode === 'CPU'); }
+        if (touchOn) { touchEl.classList.remove('hidden'); touchEl.classList.toggle('solo', currentMode === 'CPU' || net.on); }
         document.getElementById('p1-hud-name').textContent = p1Choice.name.toUpperCase();
         document.getElementById('p2-hud-name').textContent = p2Choice.name.toUpperCase() + (currentMode === 'CPU' ? ' (CPU)' : '');
         p1Score = p2Score = 0; timeRemaining = MATCH_DURATION; tickFrames = 0; suddenDeath = false; pendingEnd = false;
@@ -1143,6 +1184,7 @@
         ball = new Ball(); updateScoreUI(); stats = newStats(); rec = []; replayData = null; startMusic();
         if (currentMode === 'CPU') { player2.lvl = settings.lvl; player2.baseSpeed = player2.moveSpeed = MOVE_SPEED * [0.72, 0.9, 1.05][settings.lvl]; }
         countdown = 180; fx = []; shake = 0; announce(`¡BIENVENIDOS A ${STADIUMS[stadiumId].name}!`, '#ffffff'); sfx('whistle');
+        if (net.on && net.host) { net.active = true; net.sq = 0; net.snapN = 0; net.stSel = false; netCtl({ t: 'start', p1: p1Choice.id, p2: p2Choice.id, st: stadiumId, g: settings.goals, tm: settings.time }); }
         gameState = 'PLAYING'; acc = 0; lastT = performance.now();
     }
     function updateScoreUI() {
@@ -1152,6 +1194,7 @@
     }
     function showGameOver() {
         gameState = 'GAMEOVER'; uiHud.classList.add('hidden');
+        if (net.on && net.host) { net.active = false; netCtl({ t: 'over', sc: [p1Score, p2Score], sx: stats }); }
         if (tour && curMatch) {
             const lw = p1Score > p2Score, win = lw ? curMatch.L : curMatch.R, ab = curMatch.L === curMatch.a ? [p1Score, p2Score] : [p2Score, p1Score];
             advance(win, ab.join('-')); curMatch = null;
@@ -1159,10 +1202,144 @@
             return;
         }
         uiGameover.classList.remove('hidden');
+        document.querySelector('#ui-gameover .arcade-btn.blue').classList.toggle('hidden', net.on && !net.host);
         let wName = p1Score > p2Score ? p1Choice.name : p2Choice.name; if (p1Score === p2Score) wName = 'EMPATE';
         document.getElementById('winner-text').textContent = wName === 'EMPATE' ? '¡EMPATE!' : `¡CAMPEÓN: ${wName.toUpperCase()}!`;
         document.getElementById('final-score').textContent = `${p1Score} - ${p2Score}`;
         document.getElementById('stats-box').innerHTML = statsHTML();
+    }
+
+    // ===================== MODO ONLINE (WebRTC, sin servidor propio) =====================
+    const ICE = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] };
+    const r1 = v => Math.round(v * 10) / 10, r2 = v => Math.round(v * 100) / 100;
+    const b64 = u8 => { let s = ''; u8.forEach(b => s += String.fromCharCode(b)); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
+    const unb64 = s => { s = s.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; return Uint8Array.from(atob(s), c => c.charCodeAt(0)); };
+    async function pack(d) {
+        const txt = JSON.stringify({ t: d.type, s: d.sdp });
+        try { return 'z' + b64(new Uint8Array(await new Response(new Blob([txt]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer())); }
+        catch (e) { return 'r' + b64(new TextEncoder().encode(txt)); }
+    }
+    async function unpack(code) {
+        code = code.replace(/\s+/g, ''); const bytes = unb64(code.slice(1)); let txt;
+        if (code[0] === 'z') txt = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
+        else txt = new TextDecoder().decode(bytes);
+        const o = JSON.parse(txt); return { type: o.t, sdp: o.s };
+    }
+    const netCtl = o => { if (net.dC && net.dC.readyState === 'open') net.dC.send(JSON.stringify(o)); };
+    function netClose() {
+        const pc = net.pc, a = net.dS, b = net.dC; net.on = false; net.pc = net.dS = net.dC = null;
+        try { a && a.close(); b && b.close(); pc && pc.close(); } catch (e) {}
+        Object.assign(net, { host: false, active: false, opened: 0, myChar: null, otherChar: null, stSel: false, rq: 0, iq: 0, lastN: 0, sq: 0, snapN: 0, since: 0, base: null, remote: { left: false, right: false, jump: false, kickHold: false } });
+    }
+    function netLost() {
+        if (!net.on) return; netClose(); hideAll(); gameState = 'MENU';
+        showInfo(`<h2 class="text-2xl text-pink-400 mb-4 text-center">SE PERDIÓ LA CONEXIÓN</h2><p class="text-xs text-gray-300 mb-6 text-center">Tu amigo se desconectó o se cortó internet.</p><button class="arcade-btn" onclick="goToMenu()">MENÚ PRINCIPAL</button>`);
+    }
+    function newPC() { const pc = new RTCPeerConnection(ICE); net.pc = pc; pc.onconnectionstatechange = () => { if (['failed', 'closed'].includes(pc.connectionState)) netLost(); }; return pc; }
+    function waitIce(pc) {
+        return new Promise(res => { if (pc.iceGatheringState === 'complete') return res(); const f = () => { if (pc.iceGatheringState === 'complete') { pc.removeEventListener('icegatheringstatechange', f); res(); } }; pc.addEventListener('icegatheringstatechange', f); setTimeout(res, 4000); });
+    }
+    function wire(ch, kind) {
+        const opened = () => { if (++net.opened === 2) netConnected(); };
+        ch.onopen = opened; if (ch.readyState === 'open') opened();
+        ch.onmessage = e => netMsg(kind, e.data); ch.onclose = () => netLost();
+    }
+    function copyCode(id) { const t = document.getElementById(id); t.select(); try { navigator.clipboard.writeText(t.value); } catch (e) { document.execCommand('copy'); } const st = document.getElementById('net-st'); if (st) st.textContent = '¡Código copiado!'; }
+    function showOnline() {
+        netClose();
+        showInfo(`<h2 class="text-2xl text-yellow-300 mb-4 text-center">JUGAR ONLINE</h2><p class="text-xs text-gray-300 mb-6 text-center leading-relaxed">1 vs 1 por internet con un amigo.<br>No hace falta registrarse: se intercambian dos códigos (por WhatsApp, por ejemplo).<br>Los dos tienen que tener este juego abierto.</p><div class="flex gap-6"><button class="arcade-btn blue" onclick="createRoom()">CREAR SALA</button><button class="arcade-btn" onclick="showJoin()">UNIRME</button></div><button class="${BTN}" onclick="goToMenu()">VOLVER</button>`);
+    }
+    async function createRoom() {
+        netClose(); net.host = true; showInfo('<h2 class="text-xl text-yellow-300 text-center">Creando sala...</h2>');
+        const pc = newPC(); net.dS = pc.createDataChannel('s', { ordered: false, maxRetransmits: 0 }); net.dC = pc.createDataChannel('c'); wire(net.dS, 's'); wire(net.dC, 'c');
+        await pc.setLocalDescription(await pc.createOffer()); await waitIce(pc);
+        const code = await pack(pc.localDescription);
+        showInfo(`<h2 class="text-xl text-yellow-300 mb-3 text-center">CREAR SALA</h2><p class="text-xs text-gray-300 text-center">1) Mandale este código a tu amigo:</p><textarea id="net-out" class="net-ta" readonly></textarea><button class="${BTN}" onclick="copyCode('net-out')">COPIAR CÓDIGO</button><p class="text-xs text-gray-300 text-center mt-4">2) Pegá acá el código que te devuelva:</p><textarea id="net-in" class="net-ta"></textarea><button class="arcade-btn mt-4" onclick="acceptAnswer()">CONECTAR</button><p id="net-st" class="text-xs text-cyan-300 mt-4 text-center"></p><button class="${BTN}" onclick="goToMenu()">CANCELAR</button>`);
+        document.getElementById('net-out').value = code;
+    }
+    async function acceptAnswer() {
+        const st = document.getElementById('net-st');
+        try { await net.pc.setRemoteDescription(await unpack(document.getElementById('net-in').value)); st.textContent = 'Conectando... (si tarda más de 15 segundos, puede que la red bloquee la conexión)'; }
+        catch (e) { st.textContent = 'Código inválido o ya usado. Creá una sala nueva.'; }
+    }
+    function showJoin() {
+        netClose();
+        showInfo(`<h2 class="text-xl text-yellow-300 mb-3 text-center">UNIRME A UNA SALA</h2><p class="text-xs text-gray-300 text-center">Pegá el código que te mandó el anfitrión:</p><textarea id="net-in" class="net-ta"></textarea><button class="arcade-btn mt-4" onclick="joinRoom()">GENERAR RESPUESTA</button><p id="net-st" class="text-xs text-cyan-300 mt-4 text-center"></p><div id="net-ans" class="text-center"></div><button class="${BTN}" onclick="goToMenu()">CANCELAR</button>`);
+    }
+    async function joinRoom() {
+        const st = document.getElementById('net-st'); let offer;
+        try { offer = await unpack(document.getElementById('net-in').value); } catch (e) { st.textContent = 'Código inválido, revisalo.'; return; }
+        st.textContent = 'Generando respuesta...'; net.host = false; const pc = newPC();
+        pc.ondatachannel = e => { if (e.channel.label === 's') { net.dS = e.channel; wire(e.channel, 's'); } else { net.dC = e.channel; wire(e.channel, 'c'); } };
+        await pc.setRemoteDescription(offer); await pc.setLocalDescription(await pc.createAnswer()); await waitIce(pc);
+        const code = await pack(pc.localDescription);
+        document.getElementById('net-ans').innerHTML = `<p class="text-xs text-gray-300 mt-4">Mandale este código al anfitrión y esperá:</p><textarea id="net-out" class="net-ta" readonly></textarea><button class="${BTN}" onclick="copyCode('net-out')">COPIAR CÓDIGO</button>`;
+        document.getElementById('net-out').value = code; st.textContent = 'Esperando que el anfitrión te conecte...';
+    }
+    function netConnected() {
+        net.on = true; flow = { mode: 'PVP', tour: false, online: true, size: TOUR_SIZE, humans: 2 }; currentMode = 'PVP'; startMusic();
+        if (net.host) { gameState = 'SELECT'; showInfo(`<h2 class="text-2xl text-green-400 mb-4 text-center" style="color:#9dff4a">¡CONECTADO!</h2><p class="text-xs text-gray-300 mb-6 text-center leading-relaxed">Tu amigo ya está en la sala.<br>Elegí la duración y los goles; después cada uno elige su jugador.</p><button class="arcade-btn" onclick="showOptions()">CONTINUAR</button>`); }
+        else { gameState = 'SELECT'; beginPick(); }
+    }
+    function netPicked() {
+        net.myChar = picks[0]; netCtl({ t: 'pick', id: net.myChar.id });
+        const wait = txt => showInfo(`<h2 class="text-xl text-yellow-300 text-center mb-4">${net.myChar.nickname}</h2><p class="text-xs text-gray-300 text-center">${txt}</p><button class="${BTN}" onclick="goToMenu()">SALIR</button>`);
+        if (net.host) { if (net.otherChar) { net.stSel = true; chooseStadium(); } else wait('Esperando que tu amigo elija su jugador...'); }
+        else wait('Esperando que el anfitrión elija el estadio...');
+    }
+    function netMsg(kind, raw) {
+        let m; try { m = JSON.parse(raw); } catch (e) { return; }
+        if (kind === 's') {
+            if (m.k === 'i') { if (m.q > net.rq) { net.rq = m.q; net.remote = { left: !!m.l, right: !!m.r, jump: !!m.j, kickHold: !!m.h }; } }
+            else if (m.k === 's') netApply(m);
+            return;
+        }
+        if (m.t === 'pick') { net.otherChar = ROSTER.find(c => c.id === m.id); if (net.host && net.myChar && !net.stSel) { net.stSel = true; chooseStadium(); } }
+        else if (m.t === 'start') initMatchGuest(m);
+        else if (m.t === 'over') { p1Score = m.sc[0]; p2Score = m.sc[1]; stats = m.sx; net.active = false; showGameOver(); }
+    }
+    const localInput = () => { const any = a => a.some(c => keys[c]); return { left: any(['KeyA', 'ArrowLeft']), right: any(['KeyD', 'ArrowRight']), jump: any(['KeyW', 'ArrowUp']), kickHold: any(['KeyF', 'KeyG', 'Space', 'Enter', 'NumpadEnter', 'Numpad0', 'Period', 'Slash', 'ShiftRight']) }; };
+    function netSendState() {
+        if (!net.dS || net.dS.readyState !== 'open') return;
+        const P = q => [r1(q.x), r1(q.y), r2(q.vx), r2(q.vy), q.facing, q.kickAnimTimer, Math.round(q.chargeTimer), q.frozen ? 1 : 0];
+        const m = { k: 's', n: ++net.sq, st: gameState, sc: [p1Score, p2Score], tr: timeRemaining, sd: suddenDeath ? 1 : 0, cd: countdown, pf: pauseFrames,
+            b: [r1(ball.x), r1(ball.y), r2(ball.vx), r2(ball.vy), r2(ball.angle), ball.radius, ball.superType ? SUPERS.indexOf(ball.superType) : -1],
+            p: [P(player1), P(player2)], gh: [r1(goalH[0]), r1(goalH[1])],
+            pb: powerupBox.active ? [Math.round(powerupBox.x), Math.round(powerupBox.y), powerupBox.type, Math.round(powerupBox.life)] : 0,
+            ap: activePowerup ? [activePowerup.type, activePowerup.timer, activePowerup.max, activePowerup.owner === player1 ? 0 : 1] : 0,
+            sh: r1(shake), fl: flashT > 0 ? [flashT, flashCol] : 0, gs: goalSide, ev: netEv };
+        if (gameState === 'GOAL_PAUSE') m.gi = [goalInfo[0], goalInfo[1], goalInfo[2] ? 1 : 0, goalInfo[3] ? goalInfo[3].id : 0];
+        netEv = []; try { net.dS.send(JSON.stringify(m)); } catch (e) {}
+    }
+    function netApply(m) {
+        if (!net.active || m.n <= net.lastN) return; net.lastN = m.n;
+        gameState = m.st; p1Score = m.sc[0]; p2Score = m.sc[1]; timeRemaining = m.tr; suddenDeath = !!m.sd; countdown = m.cd; pauseFrames = m.pf;
+        const b = m.b; ball.x = b[0]; ball.y = b[1]; ball.vx = b[2]; ball.vy = b[3]; ball.angle = b[4]; ball.radius = b[5]; ball.superType = b[6] >= 0 ? SUPERS[b[6]] : null;
+        [player1, player2].forEach((q, i) => { const d = m.p[i]; q.x = d[0]; q.y = d[1]; q.vx = d[2]; q.vy = d[3]; q.facing = d[4]; q.kickAnimTimer = d[5]; q.chargeTimer = d[6]; q.frozen = !!d[7]; });
+        goalH = m.gh;
+        if (m.pb) Object.assign(powerupBox, { active: true, x: m.pb[0], y: m.pb[1], type: m.pb[2], life: m.pb[3] }); else powerupBox.active = false;
+        activePowerup = m.ap ? { type: m.ap[0], timer: m.ap[1], max: m.ap[2], owner: m.ap[3] ? player2 : player1 } : null;
+        shake = m.sh; flashT = m.fl ? m.fl[0] : 0; if (m.fl) flashCol = m.fl[1]; goalSide = m.gs;
+        if (m.gi) goalInfo = [m.gi[0], m.gi[1], !!m.gi[2], ROSTER.find(c => c.id === m.gi[3])];
+        (m.ev || []).forEach(e => { if (e[0] === 'b') burst(e[1], e[2], e[3], e[4], e[5]); else if (e[0] === 'f') sfx(e[1]); else if (e[0] === 'a') announce(e[1], e[2]); else if (e[0] === 'g') ring(e[1], e[2], e[3], e[4]); });
+        const rp = m.st === 'REPLAY' ? 0 : 1; net.since = 0;
+        net.base = [[ball.x, ball.y, ball.vx * rp, ball.vy * rp], [player1.x, player1.y, player1.vx * rp, player1.vy * rp], [player2.x, player2.y, player2.vx * rp, player2.vy * rp]];
+    }
+    function guestTick() {
+        matchFrames++; shake *= 0.9; if (banner.timer > 0) banner.timer--;
+        fx = fx.filter(p => (p.x += p.vx, p.y += p.vy, p.vy += (p.ring ? 0 : 0.25), p.age = (p.age || 0) + 1, --p.life > 0));
+        if (net.base) { net.since = Math.min(net.since + 1, 3); [ball, player1, player2].forEach((o, i) => { const b = net.base[i]; o.x = b[0] + b[2] * net.since; o.y = b[1] + b[3] * net.since; }); }
+        const i = localInput();
+        try { if (net.dS && net.dS.readyState === 'open') net.dS.send(JSON.stringify({ k: 'i', q: ++net.iq, l: +i.left, r: +i.right, j: +i.jump, h: +i.kickHold })); } catch (e) {}
+    }
+    function initMatchGuest(m) {
+        hideAll(); p1Choice = ROSTER.find(c => c.id === m.p1); p2Choice = ROSTER.find(c => c.id === m.p2); stadiumId = m.st; applyStadiumCrowd();
+        MAX_GOALS = m.g; MATCH_DURATION = m.tm; currentMode = 'PVP';
+        player1 = new Player(CW / 4, true, p1Choice, false); player2 = new Player(CW * 3 / 4, false, p2Choice, false); ball = new Ball();
+        activePowerup = null; powerupBox.active = false; stats = newStats(); p1Score = p2Score = 0; timeRemaining = m.tm; suddenDeath = false; countdown = 0;
+        fx = []; goalH = [GOAL_H, GOAL_H]; banner.timer = 0; net.lastN = 0; net.base = null; net.since = 0; net.active = true;
+        uiHud.classList.remove('hidden'); if (touchOn) { touchEl.classList.remove('hidden'); touchEl.classList.add('solo'); }
+        gameState = 'PLAYING'; acc = 0; lastT = performance.now(); startMusic();
     }
 
     applyStadiumCrowd(); refreshAudioUI();

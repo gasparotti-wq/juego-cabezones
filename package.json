@@ -1,0 +1,14 @@
+{
+  "name": "juego-cabezones",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Fútbol arcade de cabezones para jugar local y por LAN.",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

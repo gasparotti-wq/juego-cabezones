@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cabezones de la Tec - Online</title>
+    <link rel="icon" type="image/png" href="assets/heads/01.png">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="game-container">
+    <div id="hud" class="hidden">
+        <button id="pause-btn" onclick="this.blur();togglePause()" title="Pausa (P / ESC)">II</button>
+        <div class="score-panel" style="border-color: #48cae4;">
+            <span id="p1-hud-name" class="player-name text-cyan-300">P1</span>
+            <span id="p1-score" class="score-num text-white">0</span>
+        </div>
+        <div id="timer-box">02:30</div>
+        <div class="score-panel" style="border-color: #f72585;">
+            <span id="p2-hud-name" class="player-name text-pink-400">P2</span>
+            <span id="p2-score" class="score-num text-white">0</span>
+        </div>
+    </div>
+
+    <!-- Canvas de resolución ancha 1600x600 -->
+    <canvas id="gameCanvas" width="1900" height="700"></canvas>
+
+    <div id="ui-menu" class="ui-layer">
+        <h1 class="text-3xl md:text-5xl text-yellow-300 mb-8 text-center title-anim glow">CABEZONES DE LA TEC</h1>
+        <div class="grid grid-cols-2 gap-4">
+            <button class="arcade-btn" onclick="startSelection('CPU')">1 VS CPU</button>
+            <button class="arcade-btn blue" onclick="startSelection('PVP')">1 VS 1 LOCAL</button>
+            <button class="arcade-btn blue" onclick="startSelection('CPU', true)">TORNEO VS CPU</button>
+            <button class="arcade-btn" onclick="startSelection('PVP', true)">TORNEO 1 VS 1</button>
+            <button class="arcade-btn col-span-2" onclick="showOnline()">JUGAR EN LAN</button>
+            <button class="arcade-btn blue" onclick="showCredits()">CRÉDITOS</button>
+            <button class="arcade-btn" onclick="showSettings()">AJUSTES</button>
+        </div>
+        <div class="mt-6 bg-black/60 p-4 border-2 border-gray-600 rounded-lg text-xs text-gray-300 grid grid-cols-2 gap-8 text-center leading-relaxed">
+            <div>
+                <p class="text-cyan-400 mb-2">JUGADOR 1</p>
+                <p>Mover: A / D &nbsp; Saltar: W</p>
+                <p class="text-yellow-300 mt-1">Patear: F &nbsp;(mantené = SÚPER)</p>
+            </div>
+            <div>
+                <p class="text-pink-400 mb-2">JUGADOR 2</p>
+                <p>Mover: ◄ / ► &nbsp; Saltar: ▲</p>
+                <p class="text-yellow-300 mt-1">Patear: ENTER o . &nbsp;(mantené = SÚPER)</p>
+            </div>
+            <p class="col-span-2 text-gray-400">Contra la CPU podés usar cualquiera de los dos juegos de teclas · Pausa: P / ESC</p>
+        </div>
+    </div>
+
+    <div id="ui-select" class="ui-layer hidden">
+        <h2 id="select-title" class="text-2xl md:text-3xl text-cyan-400 mb-6 text-center" style="text-shadow: 2px 2px 0 #000;">ELIGE JUGADOR 1</h2>
+        <div id="char-grid"></div>
+        <button class="arcade-btn mt-6 text-sm py-2 px-6" onclick="goToMenu()">VOLVER</button>
+    </div>
+
+    <div id="ui-info" class="ui-layer hidden"></div>
+
+    <div id="touch" class="hidden"></div>
+
+    <div id="audio-btns"><button id="music-btn" onclick="this.blur();toggleMusic()" title="Música">♪</button><button id="sfx-btn" onclick="this.blur();toggleSfx()" title="Sonido">🔊</button></div>
+
+    <div id="ui-pause" class="ui-layer hidden" style="background: rgba(11,19,43,0.75);">
+        <h1 class="text-4xl text-yellow-300 mb-8 text-center" style="text-shadow: 4px 4px 0 #f72585;">PAUSA</h1>
+        <button class="arcade-btn blue" onclick="togglePause()">CONTINUAR</button>
+        <button class="arcade-btn" onclick="goToMenu()">MENÚ PRINCIPAL</button>
+        <p class="text-xs text-gray-300 mt-4">P o ESC para pausar / continuar</p>
+    </div>
+
+    <div id="ui-gameover" class="ui-layer hidden">
+        <h1 class="text-5xl text-yellow-300 mb-4 text-center" style="text-shadow: 4px 4px 0 #000;">¡FINAL DEL PARTIDO!</h1>
+        <h2 id="winner-text" class="text-3xl text-white mb-6 text-center">GANA JUGADOR 1</h2>
+        <p id="final-score" class="text-2xl text-cyan-300 mb-4">5 - 3</p>
+        <div id="stats-box"></div>
+        <button class="arcade-btn blue" onclick="initMatch()">REVANCHA</button>
+        <button class="arcade-btn mt-4" onclick="goToMenu()">VOLVER AL MENÚ</button>
+    </div>
+</div>
+
+<script src="client/net.js" defer></script>
+<script src="client/game.js" defer></script>
+</body>
+</html>
