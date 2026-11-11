@@ -6,7 +6,9 @@
   "description": "Fútbol arcade de cabezones para jugar local y por LAN.",
   "scripts": {
     "start": "node server/index.js",
-    "dev": "node --watch server/index.js"
+    "dev": "node --watch server/index.js",
+    "check": "node --check server/index.js && node --check server/ws.js && node --check server/rooms.js && node --check client/game.js && node --check client/net.js",
+    "test": "node --test"
   },
   "engines": {
     "node": ">=18"

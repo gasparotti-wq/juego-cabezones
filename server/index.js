@@ -38,6 +38,13 @@ function send(res, status, body, headers = {}) {
     res.end(body);
 }
 
+function sendJson(res, status, value) {
+    send(res, status, JSON.stringify(value), {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': 'no-store'
+    });
+}
+
 function resolveRequestPath(requestUrl) {
     let pathname;
     try {
@@ -57,6 +64,26 @@ function resolveRequestPath(requestUrl) {
 const server = http.createServer((req, res) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') {
         send(res, 405, 'Método no permitido', { Allow: 'GET, HEAD' });
+        return;
+    }
+
+    let pathname;
+    try {
+        pathname = new URL(req.url, 'http://localhost').pathname;
+    } catch {
+        send(res, 400, 'Ruta inválida');
+        return;
+    }
+
+    if (pathname === '/health') {
+        const stats = rooms.stats();
+        sendJson(res, 200, {
+            ok: true,
+            uptime: Math.round(process.uptime()),
+            connections: connections.size,
+            rooms: stats.rooms,
+            players: stats.players
+        });
         return;
     }
 
@@ -94,20 +121,19 @@ const connections = new Set();
 
 attachWebSocketServer(server, connection => {
     connections.add(connection);
-    const limit = { since: Date.now(), count: 0 };
-    const relayLimit = { since: Date.now(), count: 0 };
+    const hardLimit = { since: Date.now(), count: 0 };
+    // Token bucket para retransmisiones: absorbe ráfagas (por ejemplo, si el proceso
+    // estuvo ocupado y llegan mensajes acumulados) y solo descarta si el ritmo
+    // sostenido supera ~150 mensajes/s.
+    const relayBucket = { tokens: 300, max: 300, rate: 150, last: Date.now() };
 
     connection.on('message', text => {
         const now = Date.now();
-        if (now - limit.since >= 1000) {
-            limit.since = now;
-            limit.count = 0;
+        if (now - hardLimit.since >= 1000) {
+            hardLimit.since = now;
+            hardLimit.count = 0;
         }
-        if (now - relayLimit.since >= 1000) {
-            relayLimit.since = now;
-            relayLimit.count = 0;
-        }
-        if (++limit.count > 2000) {
+        if (++hardLimit.count > 2000) {
             connection.closeReason = 'rate limit (>2000 msg/s)';
             connection.close(1008, 'Demasiados mensajes');
             return;
@@ -137,13 +163,17 @@ attachWebSocketServer(server, connection => {
                 if (room) console.log(`  Sala ${room.code}: rival conectado`);
                 break;
             }
-            case 'relay':
-                // Las tasas de diseño son ~30-70 mensajes/s por jugador. Si un navegador
-                // acelera su reloj interno puede superarlas: los excedentes se descartan
-                // (ambos lados aplican siempre el último mensaje recibido) y solo se
-                // corta la conexión ante una inundación real, controlada por `limit`.
-                if (++relayLimit.count <= 150) rooms.relay(connection, message.d);
+            case 'relay': {
+                // Ambos lados aplican siempre el último mensaje recibido, así que
+                // descartar excedentes no rompe la partida.
+                relayBucket.tokens = Math.min(relayBucket.max, relayBucket.tokens + (now - relayBucket.last) / 1000 * relayBucket.rate);
+                relayBucket.last = now;
+                if (relayBucket.tokens >= 1) {
+                    relayBucket.tokens -= 1;
+                    rooms.relay(connection, message.d);
+                }
                 break;
+            }
             case 'leave':
                 rooms.leave(connection);
                 break;
@@ -165,6 +195,17 @@ attachWebSocketServer(server, connection => {
 
 startHeartbeat(connections);
 setInterval(() => rooms.cleanup(), 30000).unref();
+
+function shutdown(signal) {
+    console.log(`\n  Cerrando servidor (${signal})...`);
+    for (const connection of connections) {
+        try { connection.close(1001, 'servidor apagado'); } catch {}
+    }
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(0), 1500).unref();
+}
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 // Diagnóstico: registrar errores no capturados en vez de morir en silencio.
 process.on('uncaughtException', error => {

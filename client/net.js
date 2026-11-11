@@ -28,6 +28,11 @@
         connecting: null,
         manualClose: false,
         pingTimer: null,
+        latency: null,
+        jitter: 0,
+        lastMessageAt: 0,
+        lastPongAt: 0,
+        dropped: 0,
 
         on(event, listener) {
             if (!listeners.has(event)) listeners.set(event, []);
@@ -46,6 +51,12 @@
         connect() {
             if (this.isOpen()) return Promise.resolve();
             if (this.connecting) return this.connecting;
+
+            this.dropped = 0;
+            this.latency = null;
+            this.jitter = 0;
+            this.lastMessageAt = 0;
+            this.lastPongAt = 0;
 
             const protocol = location.protocol === 'https:' ? 'wss://' : 'ws://';
             const url = protocol + location.host + '/ws';
@@ -84,6 +95,7 @@
                 };
 
                 socket.onmessage = event => {
+                    this.lastMessageAt = performance.now();
                     let message;
                     try {
                         message = JSON.parse(event.data);
@@ -110,6 +122,10 @@
                     this.peer = false;
                     this.code = null;
                     this.role = null;
+                    this.latency = null;
+                    this.jitter = 0;
+                    this.lastMessageAt = 0;
+                    this.lastPongAt = 0;
                     if (!settled) {
                         settled = true;
                         reject(new Error('No se pudo conectar al servidor.'));
@@ -137,9 +153,14 @@
                 case 'relay':
                     emit('relay', message.d);
                     break;
-                case 'pong':
-                    emit('latency', Date.now() - Number(message.ts || Date.now()));
+                case 'pong': {
+                    const sample = Date.now() - Number(message.ts || Date.now());
+                    this.jitter = this.latency == null ? 0 : this.jitter * 0.75 + Math.abs(sample - this.latency) * 0.25;
+                    this.latency = this.latency == null ? sample : this.latency * 0.7 + sample * 0.3;
+                    this.lastPongAt = performance.now();
+                    emit('latency', Math.round(this.latency));
                     break;
+                }
                 case 'error':
                     emit('server-error', message);
                     break;
@@ -160,13 +181,26 @@
 
         send(message) {
             if (!this.isOpen()) return false;
-            if (this.ws.bufferedAmount > 256 * 1024) return false;
+            if (this.ws.bufferedAmount > 256 * 1024) {
+                this.dropped++;
+                return false;
+            }
             try {
                 this.ws.send(JSON.stringify(message));
                 return true;
             } catch {
+                this.dropped++;
                 return false;
             }
+        },
+
+        // Calidad orientativa para mostrar en pantalla y adaptar el tráfico.
+        quality() {
+            if (!this.isOpen() || this.latency == null) return 'unknown';
+            if (this.lastPongAt && performance.now() - this.lastPongAt > 15000) return 'unknown';
+            if (this.latency <= 70 && this.jitter <= 20) return 'good';
+            if (this.latency <= 140 && this.jitter <= 45) return 'ok';
+            return 'bad';
         },
 
         sendRelay(data) {
@@ -200,6 +234,10 @@
             this.peer = false;
             this.code = null;
             this.role = null;
+            this.latency = null;
+            this.jitter = 0;
+            this.lastMessageAt = 0;
+            this.lastPongAt = 0;
 
             if (socket) {
                 try { socket.close(1000, 'salir'); } catch {}

@@ -66,7 +66,7 @@ const ROSTER = [
     let boxTimer = 200, lastBoxType = '', goalSide = -1, flashT = 0, flashCol = '#fff';
     const PU_STYLE = { superJump: ['#06d6a0', '▲'], freeze: ['#90e0ef', '❄'], giantGoal: ['#ffd166', '▣'], speedBoost: ['#ef476f', '»'], bigBall: ['#ffffff', '●'], moon: ['#b8c0ff', '☾'] };
     let fx = [], shake = 0, countdown = 0, sfxOff = false, musicOff = false, actx = null;
-    const net = { on: false, host: false, active: false, code: '', role: '', myChar: null, otherChar: null, stSel: false, rq: 0, iq: 0, lastN: 0, sq: 0, snapN: 0, since: 0, base: null, lastInputAt: 0, lastSnapAt: 0, remote: { left: false, right: false, jump: false, kickHold: false } };
+    const net = { on: false, host: false, active: false, code: '', role: '', myChar: null, otherChar: null, stSel: false, rq: 0, iq: 0, lastN: 0, sq: 0, since: 0, base: null, correction: null, lastInputAt: 0, lastSnapAt: 0, lastSnapRecvAt: 0, lastRemoteAt: 0, statusAt: 0, remote: { left: false, right: false, jump: false, kickHold: false } };
     let netEv = [];
     try { sfxOff = localStorage.getItem('cdt_sfx') === '0'; musicOff = localStorage.getItem('cdt_music') === '0'; } catch (e) {}
     let stats = [], rec = [], replayData = null, replayI = 0, musicOn = false, mStep = 0;
@@ -472,7 +472,14 @@ const ROSTER = [
         ball.x = f.b[0]; ball.y = f.b[1]; ball.angle = f.b[2]; ball.superType = f.b[3]; ball.radius = f.b[4];
         [player1, player2].forEach((q, k) => { const d = f.p[k]; q.x = d[0]; q.y = d[1]; q.facing = d[2]; q.kickAnimTimer = d[3]; q.chargeTimer = d[4]; q.frozen = d[5]; });
     }
-    function step() { stepCore(); if (net.on && net.host && net.active && (++net.snapN % 2 === 0) && performance.now() - net.lastSnapAt >= 10) netSendState(); }
+    function step() {
+        stepCore();
+        if (net.on && net.host && net.active) {
+            // 30 Hz en una red sana y 20 Hz si hay latencia o acumulación.
+            const interval = netLinkBad() ? 50 : 33;
+            if (performance.now() - net.lastSnapAt >= interval) netSendState();
+        }
+    }
     function stepCore() {
         matchFrames++; shake *= 0.9;
         fx = fx.filter(p => (p.x += p.vx, p.y += p.vy, p.vy += (p.ring ? 0 : 0.25), p.age = (p.age || 0) + 1, --p.life > 0));
@@ -744,6 +751,7 @@ const ROSTER = [
     let lastT = 0, acc = 0;
     function frame(t) {
         requestAnimationFrame(frame);
+        if (net.on) { const now = performance.now(); netWatch(now); updateNetStatus(now); }
         const dt = Math.min(t - lastT, 100); lastT = t;
         if (net.on && !net.host && net.active) { acc += dt; while (acc >= STEP) { acc -= STEP; guestTick(); } render(t); return; }
         if (gameState === 'PAUSED') { render(t); return; }
@@ -892,7 +900,11 @@ const ROSTER = [
         ball = new Ball(); updateScoreUI(); stats = newStats(); rec = []; replayData = null; startMusic();
         if (currentMode === 'CPU') { player2.lvl = settings.lvl; player2.baseSpeed = player2.moveSpeed = MOVE_SPEED * [0.72, 0.9, 1.05][settings.lvl]; }
         countdown = 180; fx = []; shake = 0; announce(`¡BIENVENIDOS A ${STADIUMS[stadiumId].name}!`, '#ffffff'); sfx('whistle');
-        if (net.on && net.host) { net.active = true; net.sq = 0; net.snapN = 0; net.lastSnapAt = 0; net.stSel = false; netCtl({ t: 'start', p1: p1Choice.id, p2: p2Choice.id, st: stadiumId, g: settings.goals, tm: settings.time }); }
+        if (net.on && net.host) {
+            net.active = true; net.sq = 0; net.lastSnapAt = 0; net.stSel = false; net.correction = null;
+            net.lastRemoteAt = performance.now(); net.statusAt = 0;
+            netCtl({ t: 'start', p1: p1Choice.id, p2: p2Choice.id, st: stadiumId, g: settings.goals, tm: settings.time });
+        }
         gameState = 'PLAYING'; acc = 0; lastT = performance.now();
     }
     function updateScoreUI() {
@@ -932,6 +944,55 @@ const ROSTER = [
     const r1 = v => Math.round(v * 10) / 10, r2 = v => Math.round(v * 100) / 100;
     const netCtl = message => { if (net.on) Net.sendRelay(message); };
 
+    // Al volver de otra pestaña no contamos el tiempo que el navegador estuvo
+    // pausado como si la conexión se hubiera caído.
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) return;
+        const now = performance.now();
+        net.lastRemoteAt = now;
+        net.lastSnapRecvAt = now;
+        if (Net) Net.lastMessageAt = now;
+    });
+
+    function netLinkBad() {
+        if (!Net || !Net.isOpen()) return true;
+        return Net.quality() === 'bad' || (Net.ws && Net.ws.bufferedAmount > 64 * 1024);
+    }
+
+    function hideNetStatus() {
+        const el = document.getElementById('net-status');
+        if (el) el.classList.add('hidden');
+    }
+
+    function updateNetStatus(now) {
+        const el = document.getElementById('net-status');
+        if (!el) return;
+        if (!net.on || !net.active) { el.classList.add('hidden'); return; }
+        el.classList.remove('hidden');
+        if (now - net.statusAt < 400) return;
+        net.statusAt = now;
+        const quality = Net && Net.quality ? Net.quality() : 'unknown';
+        const label = { good: 'BUENA', ok: 'REGULAR', bad: 'MALA', unknown: 'CONECTANDO' }[quality] || 'CONECTANDO';
+        const ping = Net && Net.latency != null ? `${Math.round(Net.latency)} ms` : '--';
+        el.className = `net-status ${quality}`;
+        el.textContent = `LAN ${label} · ${ping}`;
+        el.title = Net ? `Latencia: ${ping} · Variación: ${Math.round(Net.jitter || 0)} ms · Envíos descartados: ${Net.dropped || 0}` : '';
+    }
+
+    // Si el rival deja de mandar datos (o el anfitrión deja de mandar instantáneas),
+    // cortamos con un mensaje claro en vez de dejar la partida congelada.
+    function netWatch(now) {
+        if (!net.active || document.hidden) return;
+        if (Net && Net.lastMessageAt && now - Net.lastMessageAt > 12000) {
+            netLost('Se perdió la conexión con el servidor. Revisá la red y volvé a crear la sala.');
+            return;
+        }
+        const lastPeerAt = net.host ? net.lastRemoteAt : net.lastSnapRecvAt;
+        if (lastPeerAt && now - lastPeerAt > 6000) {
+            netLost('La conexión con tu rival se quedó sin respuesta. Revisá la red y volvé a crear la sala.');
+        }
+    }
+
     function netClose() {
         net.on = false;
         net.active = false;
@@ -940,9 +1001,11 @@ const ROSTER = [
         net.role = '';
         Object.assign(net, {
             myChar: null, otherChar: null, stSel: false, rq: 0, iq: 0, lastN: 0, lastInputAt: 0, lastSnapAt: 0,
-            sq: 0, snapN: 0, since: 0, base: null,
+            lastSnapRecvAt: 0, lastRemoteAt: 0, statusAt: 0,
+            sq: 0, since: 0, base: null, correction: null,
             remote: { left: false, right: false, jump: false, kickHold: false }
         });
+        hideNetStatus();
         if (Net) Net.close();
     }
 
@@ -1038,6 +1101,7 @@ const ROSTER = [
             if (message.q > net.rq) {
                 net.rq = message.q;
                 net.remote = { left: !!message.l, right: !!message.r, jump: !!message.j, kickHold: !!message.h };
+                net.lastRemoteAt = performance.now();
             }
             return;
         }
@@ -1080,13 +1144,14 @@ const ROSTER = [
             ap: activePowerup ? [activePowerup.type, activePowerup.timer, activePowerup.max, activePowerup.owner === player1 ? 0 : 1] : 0,
             sh: r1(shake), fl: flashT > 0 ? [flashT, flashCol] : 0, gs: goalSide, ev: netEv };
         if (gameState === 'GOAL_PAUSE') m.gi = [goalInfo[0], goalInfo[1], goalInfo[2] ? 1 : 0, goalInfo[3] ? goalInfo[3].id : 0];
-        netEv = [];
+        // Si el envío se descarta por congestión, los efectos quedan para la próxima.
+        if (netCtl(m)) netEv = [];
         net.lastSnapAt = performance.now();
-        netCtl(m);
     }
 
     function netApply(m) {
         if (!net.active || m.n <= net.lastN) return; net.lastN = m.n;
+        const prev = [[ball.x, ball.y], [player1.x, player1.y], [player2.x, player2.y]];
         gameState = m.st; p1Score = m.sc[0]; p2Score = m.sc[1]; timeRemaining = m.tr; suddenDeath = !!m.sd; countdown = m.cd; pauseFrames = m.pf;
         const b = m.b; ball.x = b[0]; ball.y = b[1]; ball.vx = b[2]; ball.vy = b[3]; ball.angle = b[4]; ball.radius = b[5]; ball.superType = b[6] >= 0 ? SUPERS[b[6]] : null;
         [player1, player2].forEach((q, i) => { const d = m.p[i]; q.x = d[0]; q.y = d[1]; q.vx = d[2]; q.vy = d[3]; q.facing = d[4]; q.kickAnimTimer = d[5]; q.chargeTimer = d[6]; q.frozen = !!d[7]; });
@@ -1098,16 +1163,38 @@ const ROSTER = [
         (m.ev || []).forEach(e => { if (e[0] === 'b') burst(e[1], e[2], e[3], e[4], e[5]); else if (e[0] === 'f') sfx(e[1]); else if (e[0] === 'a') announce(e[1], e[2]); else if (e[0] === 'g') ring(e[1], e[2], e[3], e[4]); });
         const rp = m.st === 'REPLAY' ? 0 : 1; net.since = 0;
         net.base = [[ball.x, ball.y, ball.vx * rp, ball.vy * rp], [player1.x, player1.y, player1.vx * rp, player1.vy * rp], [player2.x, player2.y, player2.vx * rp, player2.vy * rp]];
+        // Suaviza el salto entre la posición dibujada y la instantánea nueva.
+        // Si el salto es enorme (gol, reinicio), se acepta el corte y no se interpola.
+        const nowPos = [[ball.x, ball.y], [player1.x, player1.y], [player2.x, player2.y]];
+        net.correction = prev.map((p, i) => {
+            const dx = p[0] - nowPos[i][0], dy = p[1] - nowPos[i][1];
+            return Math.hypot(dx, dy) > 90 ? null : [dx, dy];
+        });
+        if (net.correction.every(c => !c)) net.correction = null;
+        net.lastSnapRecvAt = performance.now();
     }
 
     function guestTick() {
         matchFrames++; shake *= 0.9; if (banner.timer > 0) banner.timer--;
         fx = fx.filter(p => (p.x += p.vx, p.y += p.vy, p.vy += (p.ring ? 0 : 0.25), p.age = (p.age || 0) + 1, --p.life > 0));
-        if (net.base) { net.since = Math.min(net.since + 1, 3); [ball, player1, player2].forEach((o, i) => { const b = net.base[i]; o.x = b[0] + b[2] * net.since; o.y = b[1] + b[3] * net.since; }); }
+        if (net.base) {
+            net.since = Math.min(net.since + 1, netLinkBad() ? 4 : 3);
+            [ball, player1, player2].forEach((o, i) => { const b = net.base[i]; o.x = b[0] + b[2] * net.since; o.y = b[1] + b[3] * net.since; });
+        }
+        if (net.correction) {
+            [ball, player1, player2].forEach((o, i) => {
+                const c = net.correction[i];
+                if (!c) return;
+                o.x += c[0]; o.y += c[1];
+                c[0] *= 0.82; c[1] *= 0.82;
+                if (Math.abs(c[0]) < 0.15 && Math.abs(c[1]) < 0.15) net.correction[i] = null;
+            });
+            if (net.correction.every(c => !c)) net.correction = null;
+        }
         const i = localInput();
         // El input se manda con tasa fija aunque el bucle del navegador corra más rápido.
         const now = performance.now();
-        if (now - net.lastInputAt >= 15) {
+        if (now - net.lastInputAt >= (netLinkBad() ? 33 : 20)) {
             net.lastInputAt = now;
             netCtl({ k: 'i', q: ++net.iq, l: +i.left, r: +i.right, j: +i.jump, h: +i.kickHold });
         }
@@ -1118,7 +1205,7 @@ const ROSTER = [
         MAX_GOALS = m.g; MATCH_DURATION = m.tm; currentMode = 'PVP';
         player1 = new Player(CW / 4, true, p1Choice, false); player2 = new Player(CW * 3 / 4, false, p2Choice, false); ball = new Ball();
         activePowerup = null; powerupBox.active = false; stats = newStats(); p1Score = p2Score = 0; timeRemaining = m.tm; suddenDeath = false; countdown = 0;
-        fx = []; goalH = [GOAL_H, GOAL_H]; banner.timer = 0; net.lastN = 0; net.base = null; net.since = 0; net.lastInputAt = 0; net.active = true;
+        fx = []; goalH = [GOAL_H, GOAL_H]; banner.timer = 0; net.lastN = 0; net.base = null; net.correction = null; net.since = 0; net.lastInputAt = 0; net.lastSnapRecvAt = performance.now(); net.statusAt = 0; net.active = true;
         uiHud.classList.remove('hidden'); if (touchOn) { touchEl.classList.remove('hidden'); touchEl.classList.add('solo'); }
         gameState = 'PLAYING'; acc = 0; lastT = performance.now(); startMusic();
     }
