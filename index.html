@@ -66,11 +66,18 @@
 
     <div id="audio-btns"><button id="music-btn" onclick="this.blur();toggleMusic()" title="Música">♪</button><button id="sfx-btn" onclick="this.blur();toggleSfx()" title="Sonido">🔊</button></div>
 
-    <div id="ui-pause" class="ui-layer hidden" style="background: rgba(11,19,43,0.75);">
-        <h1 class="text-4xl text-yellow-300 mb-8 text-center" style="text-shadow: 4px 4px 0 #f72585;">PAUSA</h1>
-        <button class="arcade-btn blue" onclick="togglePause()">CONTINUAR</button>
-        <button class="arcade-btn" onclick="goToMenu()">MENÚ PRINCIPAL</button>
-        <p class="text-xs text-gray-300 mt-4">P o ESC para pausar / continuar</p>
+    <div id="ui-pause" class="ui-layer hidden" style="background: rgba(11,19,43,0.82);">
+        <h1 class="text-4xl text-yellow-300 mb-4 text-center" style="text-shadow: 4px 4px 0 #f72585;">PAUSA</h1>
+        <p id="pause-timer" class="text-2xl text-white mb-4 text-center">25s</p>
+        <div class="flex gap-8 mb-4 text-center justify-center">
+            <div><p class="text-cyan-300 text-xs mb-2">JUGADOR 1</p><p id="pause-p1" class="text-sm text-gray-400">NO LISTO</p></div>
+            <div><p class="text-pink-400 text-xs mb-2">JUGADOR 2</p><p id="pause-p2" class="text-sm text-gray-400">NO LISTO</p></div>
+        </div>
+        <p id="pause-hint" class="text-xs text-gray-300 mb-4 text-center">Ambos deben confirmar para reanudar</p>
+        <div id="pause-ready-wrap" class="flex flex-col gap-2 items-center">
+            <button id="pause-ready-btn" class="arcade-btn blue" onclick="pauseSetReady()">LISTO / CONTINUAR</button>
+        </div>
+        <button class="arcade-btn mt-4" onclick="goToMenu()">MENÚ PRINCIPAL</button>
     </div>
 
     <div id="ui-gameover" class="ui-layer hidden">

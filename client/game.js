@@ -52,10 +52,10 @@ const ROSTER = [
     for (let row = 0; row < 11; row++) for (let x = -10 + (row % 2) * 12; x < CW; x += 24 + Math.random() * 6)
         crowd.push({ x: x + rnd(-3, 3), y: 185 + row * 25, s: 8 + row * 0.6, c: pick(fanCols), sk: pick(fanSkins), js: 0.003 + Math.random() * 0.007 });
 
+    const CONFETTI_COLS = ['#ff595e', '#ffca3a', '#8ac926', '#1982c4', '#6a4c93', '#f15bb5', '#00f5d4', '#ffffff'];
     let confetti = [];
     function spawnConfetti() {
-        const cols = ['#ff595e', '#ffca3a', '#8ac926', '#1982c4', '#6a4c93', '#f15bb5', '#00f5d4', '#ffffff'];
-        confetti = Array.from({ length: 200 }, () => ({ x: CW / 2 + rnd(-60, 60), y: CH / 2 + rnd(-30, 30), vx: rnd(-9, 9), vy: rnd(-14, 2) - 4, size: rnd(6, 14), color: pick(cols), rot: rnd(0, 360), rs: rnd(-7, 7) }));
+        confetti = Array.from({ length: 120 }, () => ({ x: CW / 2 + rnd(-60, 60), y: CH / 2 + rnd(-30, 30), vx: rnd(-9, 9), vy: rnd(-14, 2) - 4, size: rnd(6, 14), color: pick(CONFETTI_COLS), rot: rnd(0, 360), rs: rnd(-7, 7) }));
     }
 
     let gameState = 'MENU', currentMode = 'PVP', selectingPlayer = 1, p1Choice = null, p2Choice = null;
@@ -66,18 +66,25 @@ const ROSTER = [
     let boxTimer = 200, lastBoxType = '', goalSide = -1, flashT = 0, flashCol = '#fff';
     const PU_STYLE = { superJump: ['#06d6a0', '▲'], freeze: ['#90e0ef', '❄'], giantGoal: ['#ffd166', '▣'], speedBoost: ['#ef476f', '»'], bigBall: ['#ffffff', '●'], moon: ['#b8c0ff', '☾'] };
     let fx = [], shake = 0, countdown = 0, sfxOff = false, musicOff = false, actx = null;
-    const net = { on: false, host: false, active: false, code: '', role: '', myChar: null, otherChar: null, stSel: false, rq: 0, iq: 0, lastN: 0, sq: 0, since: 0, base: null, correction: null, lastInputAt: 0, lastSnapAt: 0, lastSnapRecvAt: 0, lastRemoteAt: 0, statusAt: 0, remote: { left: false, right: false, jump: false, kickHold: false } };
+    const net = { on: false, host: false, active: false, code: '', role: '', myChar: null, otherChar: null, stSel: false, rq: 0, iq: 0, lastN: 0, sq: 0, since: 0, base: null, correction: null, lastInputAt: 0, lastSnapAt: 0, lastSnapRecvAt: 0, lastRemoteAt: 0, statusAt: 0, evId: 0, lastEv: 0, cfSent: false, remote: { left: false, right: false, jump: false, kickHold: false } };
     let netEv = [];
     try { sfxOff = localStorage.getItem('cdt_sfx') === '0'; musicOff = localStorage.getItem('cdt_music') === '0'; } catch (e) {}
     let stats = [], rec = [], replayData = null, replayI = 0, musicOn = false, mStep = 0;
     const newStats = () => [0, 1].map(() => ({ g: 0, k: 0, s: 0, b: 0, p: 0 }));
-    function burst(x, y, col, n = 8, sp = 5) { if (net.on && net.host) netEv.push(['b', Math.round(x), Math.round(y), col, n, sp]); for (let i = 0; i < n; i++) fx.push({ x, y, vx: rnd(-sp, sp), vy: rnd(-sp, sp * 0.3), life: rnd(18, 36), col, s: rnd(3, 7) }); }
+    function pushEv(ev) { if (net.on && net.host) netEv.push([++net.evId, ...ev]); }
+    function burst(x, y, col, n = 8, sp = 5, parts) {
+        if (!parts) parts = Array.from({ length: n }, () => [Math.round(rnd(-sp, sp) * 100) / 100, Math.round(rnd(-sp, sp * 0.3) * 100) / 100, Math.round(rnd(18, 36)), Math.round(rnd(3, 7) * 10) / 10]);
+        pushEv(['b', Math.round(x), Math.round(y), col, n, sp, parts]);
+        for (const p of parts) fx.push({ x, y, vx: p[0], vy: p[1], life: p[2], col, s: p[3] });
+    }
     function sfx(k) {
-        if (net.on && net.host) netEv.push(['f', k]);
+        pushEv(['f', k]);
         if (sfxOff) return;
         try {
             actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+            if (actx.state === 'suspended') actx.resume().catch(() => {});
             const P = { kick: [180, 0.08, 'square'], super: [90, 0.35, 'sawtooth'], bar: [520, 0.12, 'triangle'], goal: [440, 0.7, 'square'], pu: [660, 0.2, 'sine'], whistle: [1500, 0.35, 'sine'], bounce: [140, 0.05, 'sine'] }[k];
+            if (!P) return;
             const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime;
             o.type = P[2]; o.frequency.setValueAtTime(P[0], t); if (k === 'goal' || k === 'pu') o.frequency.linearRampToValueAtTime(P[0] * 1.8, t + P[1]);
             g.gain.setValueAtTime(0.07, t); g.gain.exponentialRampToValueAtTime(0.0001, t + P[1]);
@@ -86,7 +93,13 @@ const ROSTER = [
     }
     function tone(f, d, type, v) {
         if (musicOff) return;
-        try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime; o.type = type; o.frequency.value = f; g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(0.0001, t + d); o.connect(g); g.connect(actx.destination); o.start(); o.stop(t + d); } catch (e) {}
+        try {
+            actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+            if (actx.state === 'suspended') actx.resume().catch(() => {});
+            const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime;
+            o.type = type; o.frequency.value = f; g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+            o.connect(g); g.connect(actx.destination); o.start(); o.stop(t + d);
+        } catch (e) {}
     }
     const LEAD = [440, 523, 659, 523, 440, 523, 784, 659, 349, 440, 523, 440, 392, 494, 587, 494], BASS = [110, 110, 87.3, 87.3, 130.8, 130.8, 98, 98];
     function startMusic() { if (musicOn) return; musicOn = true; setInterval(() => { if (musicOff || gameState === 'PAUSED') return; const i = mStep++ % 16; tone(LEAD[i], 0.18, 'square', 0.02); if (i % 2 === 0) tone(BASS[i >> 1], 0.3, 'triangle', 0.05); }, 170); }
@@ -96,11 +109,29 @@ const ROSTER = [
 
     const keys = {};
     window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
-    window.addEventListener('keydown', e => { if (e.target && e.target.tagName === 'TEXTAREA') return; keys[e.code] = true; if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', 'Slash'].includes(e.code)) e.preventDefault(); if ((e.code === 'KeyP' || e.code === 'Escape') && !e.repeat) togglePause(); if (gameState === 'REPLAY' && !e.repeat && ['Space', 'Enter', 'KeyF'].includes(e.code)) endReplay(); });
+    window.addEventListener('keydown', e => {
+        if (e.target && e.target.tagName === 'TEXTAREA') return;
+        keys[e.code] = true;
+        if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', 'Slash'].includes(e.code)) e.preventDefault();
+        if ((e.code === 'KeyP' || e.code === 'Escape') && !e.repeat) togglePause();
+        if (pauseState.active && !e.repeat && pauseState.cd <= 0) {
+            if (net.on) {
+                const my = localPauseSide();
+                const p1Keys = ['KeyF', 'KeyG', 'Space']; const p2Keys = ['Enter', 'NumpadEnter', 'Numpad0', 'Period', 'Slash'];
+                if ((my === 1 ? p1Keys : p2Keys).includes(e.code)) pauseSetReady(my);
+            } else if (currentMode === 'CPU') {
+                if (['KeyF', 'KeyG', 'Space', 'Enter', 'NumpadEnter', 'Numpad0', 'Period', 'Slash'].includes(e.code)) pauseSetReady(1);
+            } else {
+                if (['KeyF', 'KeyG', 'Space'].includes(e.code)) pauseSetReady(1);
+                if (['Enter', 'NumpadEnter', 'Numpad0', 'Period', 'Slash'].includes(e.code)) pauseSetReady(2);
+            }
+        }
+        if (gameState === 'REPLAY' && !e.repeat) trySkipReplay(e.code);
+    });
     window.addEventListener('keyup', e => { keys[e.code] = false; });
 
-    function announce(text, color = '#ffb703') { if (net.on && net.host) netEv.push(['a', text, color]); banner = { text, timer: 150, color }; }
-    function ring(x, y, col, life) { fx.push({ ring: true, x, y, vx: 0, vy: 0, life, col }); if (net.on && net.host) netEv.push(['g', Math.round(x), Math.round(y), col, life]); }
+    function announce(text, color = '#ffb703') { pushEv(['a', text, color]); banner = { text, timer: 150, color }; }
+    function ring(x, y, col, life) { fx.push({ ring: true, x, y, vx: 0, vy: 0, life, col }); pushEv(['g', Math.round(x), Math.round(y), col, life]); }
     function touch(p) { if (lastTouch !== p) { prevTouch = lastTouch; lastTouch = p; } }
 
     // Colisión círculo vs travesaño (cápsula). Evita atravesarlo y rebota arriba, abajo y por el borde.
@@ -459,11 +490,45 @@ const ROSTER = [
     function afterGoal() {
         if (pendingEnd) { showGameOver(); return; }
         player1.resetPos(); player2.resetPos(); ball.resetPos(); endPowerup();
-        powerupBox.active = false; boxTimer = rnd(120, 240); lastTouch = prevTouch = null; barCooldown = 0; countdown = 120; fx = []; rec = [];
+        powerupBox.active = false; boxTimer = rnd(120, 240); lastTouch = prevTouch = null; barCooldown = 0; countdown = 120;
+        fx = []; confetti = []; if (net.on && net.host) net.cfSent = false; pushEv(['x']);
+        rec = [];
         gameState = 'PLAYING';
     }
 
     function recFrame() { rec.push({ b: [ball.x, ball.y, ball.angle, ball.superType, ball.radius], p: [player1, player2].map(q => [q.x, q.y, q.facing, q.kickAnimTimer, q.chargeTimer, q.frozen]) }); if (rec.length > 220) rec.shift(); }
+    function concedingSide() { return goalSide === 0 ? 1 : goalSide === 1 ? 2 : 0; }
+    function canSkipReplaySide(side) {
+        if (gameState !== 'REPLAY') return false;
+        const c = concedingSide();
+        if (currentMode === 'CPU') return c === 1; // humano es P1
+        return side === c;
+    }
+    function requestReplaySkip(side) {
+        if (gameState !== 'REPLAY') return;
+        if (net.on) {
+            if (net.host) { if (canSkipReplaySide(1)) endReplay(); }
+            else if (side === 2) netCtl({ t: 'skip' }); // host valida lado/estado
+        } else {
+            if (canSkipReplaySide(side)) endReplay();
+        }
+    }
+    function trySkipReplay(code) {
+        if (gameState !== 'REPLAY') return;
+        const p1Keys = ['KeyF', 'KeyG', 'Space'];
+        const p2Keys = ['Enter', 'NumpadEnter', 'Numpad0', 'Period', 'Slash'];
+        if (net.on) {
+            const mySide = net.host ? 1 : 2;
+            if ((mySide === 1 ? p1Keys : p2Keys).includes(code)) requestReplaySkip(mySide);
+            return;
+        }
+        if (currentMode === 'CPU') {
+            if ([...p1Keys, ...p2Keys].includes(code)) requestReplaySkip(1);
+            return;
+        }
+        if (p1Keys.includes(code)) requestReplaySkip(1);
+        if (p2Keys.includes(code)) requestReplaySkip(2);
+    }
     function startReplay() { replayData = rec.slice(-150); if (replayData.length < 40) { endReplay(); return; } replayI = 0; fx = []; gameState = 'REPLAY'; }
     function endReplay() { replayData = null; afterGoal(); }
     function applyReplay() {
@@ -482,6 +547,7 @@ const ROSTER = [
     }
     function stepCore() {
         matchFrames++; shake *= 0.9;
+        if (flashT > 0) flashT--;
         fx = fx.filter(p => (p.x += p.vx, p.y += p.vy, p.vy += (p.ring ? 0 : 0.25), p.age = (p.age || 0) + 1, --p.life > 0));
         if (barCooldown > 0) barCooldown--;
         if (banner.timer > 0) banner.timer--;
@@ -641,11 +707,82 @@ const ROSTER = [
         ctx.save(); ctx.shadowColor = '#fff'; ctx.shadowBlur = 12; ctx.fillStyle = '#fff'; fit(timeText(), 34, 220); ctx.fillText(timeText(), CW / 2, 98); ctx.restore();
     }
     function togglePause() {
-        if (net.on) return;   // online no se pausa
-        if (gameState === 'PAUSED') { gameState = prePause; uiPause.classList.add('hidden'); acc = 0; lastT = performance.now(); }
-        else if (gameState === 'PLAYING' || gameState === 'GOAL_PAUSE' || gameState === 'REPLAY') { prePause = gameState; gameState = 'PAUSED'; uiPause.classList.remove('hidden'); for (const k in keys) keys[k] = false; }
+        if (pauseState.active) {
+            // En pausa temporizada no se cierra con ESC; usar "listo"
+            return;
+        }
+        if (net.on) { pauseRequestStart(); return; }
+        pauseStart();
     }
     let prePause = 'PLAYING';
+    const pauseState = { active: false, left: 0, r1: false, r2: false, cd: 0 };
+    function canPauseNow() { return ['PLAYING', 'GOAL_PAUSE', 'REPLAY'].includes(gameState) || (gameState === 'PAUSED' && pauseState.active); }
+    function localPauseSide() { if (net.on) return net.host ? 1 : 2; return 0; }
+    function pauseSetReady(side) {
+        if (!pauseState.active || pauseState.cd > 0) return;
+        if (!side) {
+            if (net.on) side = localPauseSide();
+            else if (currentMode === 'CPU') side = 1;
+            else return; // 1v1 local: usar teclas por jugador
+        }
+        if (net.on && !net.host) { netCtl({ t: 'pause', a: 'ready', s: side }); return; }
+        if (side === 1) pauseState.r1 = true; if (side === 2) pauseState.r2 = true;
+        if (net.on && net.host) netCtl({ t: 'pause', s: side }); // opcional, sync por snapshot
+        pauseMaybeStartCountdown();
+        updatePauseUI();
+    }
+    function pauseMaybeStartCountdown() {
+        if (!pauseState.active || pauseState.cd > 0) return;
+        if (pauseState.r1 && pauseState.r2) pauseState.cd = 180;
+    }
+    function pauseResume() {
+        pauseState.active = false; pauseState.left = 0; pauseState.r1 = pauseState.r2 = false; pauseState.cd = 0;
+        gameState = prePause || 'PLAYING'; uiPause.classList.add('hidden'); acc = 0; lastT = performance.now();
+        for (const k in keys) keys[k] = false;
+    }
+    function pauseStart() {
+        if (!['PLAYING', 'GOAL_PAUSE', 'REPLAY'].includes(gameState)) return;
+        if (pauseState.active) return;
+        prePause = gameState; gameState = 'PAUSED'; pauseState.active = true; pauseState.left = 1500; pauseState.r1 = false; pauseState.r2 = false; pauseState.cd = 0;
+        if (currentMode === 'CPU') pauseState.r2 = true; // CPU lista automáticamente
+        for (const k in keys) keys[k] = false;
+        uiPause.classList.remove('hidden'); updatePauseUI();
+    }
+    function pauseRequestStart() {
+        if (net.on) {
+            if (net.host) pauseStart();
+            else netCtl({ t: 'pause', a: 'start' });
+            return;
+        }
+        pauseStart();
+    }
+    function updatePauseUI() {
+        if (!uiPause) return;
+        const tEl = document.getElementById('pause-timer'), p1 = document.getElementById('pause-p1'), p2 = document.getElementById('pause-p2'), hint = document.getElementById('pause-hint'), btn = document.getElementById('pause-ready-btn');
+        if (pauseState.cd > 0) {
+            if (tEl) tEl.textContent = 'Reanudando en ' + Math.ceil(pauseState.cd / 60) + '...';
+            if (hint) hint.textContent = '¡Preparados!';
+        } else {
+            if (tEl) tEl.textContent = Math.ceil(Math.max(0, pauseState.left) / 60) + 's';
+            if (hint) hint.textContent = 'Ambos deben confirmar para reanudar';
+        }
+        if (p1) { p1.textContent = pauseState.r1 ? 'LISTO' : 'NO LISTO'; p1.style.color = pauseState.r1 ? '#9dff4a' : '#9ca3af'; }
+        if (p2) { p2.textContent = pauseState.r2 ? 'LISTO' : 'NO LISTO'; p2.style.color = pauseState.r2 ? '#9dff4a' : '#9ca3af'; }
+        if (btn) {
+            if (net.on) {
+                const mine = localPauseSide();
+                const ready = mine === 1 ? pauseState.r1 : pauseState.r2;
+                btn.textContent = ready ? 'ESPERANDO...' : 'LISTO';
+                btn.disabled = ready || pauseState.cd > 0;
+            } else if (currentMode === 'CPU') {
+                btn.textContent = pauseState.r1 ? 'ESPERANDO...' : 'LISTO';
+                btn.disabled = pauseState.r1 || pauseState.cd > 0;
+            } else {
+                btn.textContent = 'F = P1 LISTO / ENTER = P2 LISTO';
+                btn.disabled = true;
+            }
+        }
+    }
     const GOAL_THEME = [
         { c1: '#ff7b00', c2: '#ffffff', net: '#ffe8cc', glow: '#ffb347' },   // patio: naranja y blanco
         { c1: '#ffd60a', c2: '#1a1a1a', net: '#ffe9a0', glow: '#f4a300' },   // Los Mieleros: abeja
@@ -733,7 +870,7 @@ const ROSTER = [
             if (p.ring) { ctx.strokeStyle = p.col; ctx.lineWidth = 6; ctx.beginPath(); ctx.arc(p.x, p.y, p.age * 9, 0, 7); ctx.stroke(); }
             else { ctx.fillStyle = p.col; ctx.fillRect(p.x, p.y, p.s, p.s); }
         }); ctx.globalAlpha = 1;
-        if (flashT > 0) { ctx.globalAlpha = flashT / 16 * 0.35; ctx.fillStyle = flashCol; ctx.fillRect(0, 0, CW, CH); ctx.globalAlpha = 1; flashT--; }
+        if (flashT > 0) { ctx.globalAlpha = flashT / 16 * 0.35; ctx.fillStyle = flashCol; ctx.fillRect(0, 0, CW, CH); ctx.globalAlpha = 1; }
         if (countdown > 0 && gameState === 'PLAYING') {
             const n = Math.ceil(countdown / 60), fr = (countdown % 60) / 60;
             ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.globalAlpha = Math.min(1, fr * 2 + 0.3);
@@ -743,18 +880,53 @@ const ROSTER = [
             ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, CW, 30); ctx.fillRect(0, CH - 30, CW, 30);
             ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.font = '20px "Press Start 2P", monospace';
             if (Math.floor(matchFrames / 20) % 2) { ctx.fillStyle = '#ef233c'; ctx.beginPath(); ctx.arc(40, CH - 15, 8, 0, 7); ctx.fill(); }
-            ctx.fillStyle = '#fff'; ctx.fillText('REPETICIÓN', 60, CH - 15); ctx.textAlign = 'right'; ctx.font = '13px "Press Start 2P", monospace'; ctx.fillText('ESPACIO / TOCÁ PARA SALTEAR', CW - 30, CH - 15);
+            ctx.fillStyle = '#fff'; ctx.fillText('REPETICIÓN', 60, CH - 15);
+            const cs = concedingSide();
+            let can = false;
+            if (net.on) can = (net.host ? 1 : 2) === cs;
+            else if (currentMode === 'CPU') can = cs === 1;
+            else can = true; // local: depende de la tecla usada, mostramos pista general
+            ctx.textAlign = 'right'; ctx.font = '13px "Press Start 2P", monospace';
+            if (net.on && !can) ctx.fillText('ESPERANDO AL RIVAL...', CW - 30, CH - 15);
+            else if (can) ctx.fillText(cs === 1 ? 'F / ESPACIO PARA SALTEAR' : 'ENTER PARA SALTEAR', CW - 30, CH - 15);
+            else ctx.fillText('', CW - 30, CH - 15);
         }
         ctx.restore();
     }
-    canvas.addEventListener('pointerdown', () => { if (gameState === 'REPLAY') endReplay(); });
+    canvas.addEventListener('pointerdown', () => {
+        if (gameState !== 'REPLAY') return;
+        if (net.on) requestReplaySkip(net.host ? 1 : 2);
+        else if (currentMode === 'CPU') requestReplaySkip(1);
+        // en 1v1 local no se puede inferir qué jugador tocó: usar teclas
+    });
     let lastT = 0, acc = 0;
+    function pauseTick() {
+        if (!pauseState.active) return;
+        if (pauseState.cd > 0) {
+            if (--pauseState.cd <= 0) { pauseResume(); return; }
+        } else {
+            if (pauseState.left > 0) pauseState.left--;
+            pauseMaybeStartCountdown();
+            if (pauseState.left <= 0 && pauseState.cd <= 0) pauseState.cd = 180;
+        }
+        updatePauseUI();
+    }
     function frame(t) {
         requestAnimationFrame(frame);
         if (net.on) { const now = performance.now(); netWatch(now); updateNetStatus(now); }
         const dt = Math.min(t - lastT, 100); lastT = t;
-        if (net.on && !net.host && net.active) { acc += dt; while (acc >= STEP) { acc -= STEP; guestTick(); } render(t); return; }
-        if (gameState === 'PAUSED') { render(t); return; }
+        if (net.on && !net.host && net.active) {
+            acc += dt; while (acc >= STEP) { acc -= STEP; guestTick(); }
+            render(t); return;
+        }
+        if (gameState === 'PAUSED') {
+            if (pauseState.active && !(net.on && !net.host)) { acc += dt; while (acc >= STEP) { acc -= STEP; pauseTick(); } }
+            if (net.on && net.host && net.active) {
+                const interval = netLinkBad() ? 50 : 33;
+                if (performance.now() - net.lastSnapAt >= interval) netSendState();
+            }
+            render(t); return;
+        }
         if (gameState === 'MENU' || gameState === 'SELECT' || gameState === 'GAMEOVER') { menuScene(t); return; }
         acc += dt; while (acc >= STEP) { acc -= STEP; step(); }
         render(t);
@@ -784,7 +956,7 @@ const ROSTER = [
     function hideAll() { [uiMenu, uiSelect, uiGameover, uiPause, info, touchEl].forEach(e => e.classList.add('hidden')); uiHud.classList.add('hidden'); }
     function showInfo(html) { hideAll(); info.innerHTML = html; info.classList.remove('hidden'); }
     const BTN = 'arcade-btn mt-4 text-sm py-2 px-6';
-    function goToMenu() { if (net.on || net.active || (window.CabezonesNet && window.CabezonesNet.isOpen())) netClose(); hideAll(); gameState = 'MENU'; tour = null; curMatch = null; uiMenu.classList.remove('hidden'); }
+    function goToMenu() { if (net.on || net.active || (window.CabezonesNet && window.CabezonesNet.isOpen())) netClose(); pauseState.active = false; pauseState.left = 0; pauseState.r1 = pauseState.r2 = false; pauseState.cd = 0; hideAll(); gameState = 'MENU'; tour = null; curMatch = null; uiMenu.classList.remove('hidden'); }
     const TOUR_SIZE = 8; // cuartos de final; para ampliar el torneo (16 = octavos) alcanza con cambiar este número
     function startSelection(mode, tourney) {
         flow = { mode, tour: !!tourney, size: TOUR_SIZE, humans: mode === 'CPU' ? 1 : 2 }; currentMode = mode; gameState = 'SELECT';
@@ -899,10 +1071,11 @@ const ROSTER = [
         player2 = new Player(CW * 3 / 4, false, p2Choice, currentMode === 'CPU');
         ball = new Ball(); updateScoreUI(); stats = newStats(); rec = []; replayData = null; startMusic();
         if (currentMode === 'CPU') { player2.lvl = settings.lvl; player2.baseSpeed = player2.moveSpeed = MOVE_SPEED * [0.72, 0.9, 1.05][settings.lvl]; }
-        countdown = 180; fx = []; shake = 0; announce(`¡BIENVENIDOS A ${STADIUMS[stadiumId].name}!`, '#ffffff'); sfx('whistle');
+        countdown = 180; fx = []; pushEv(['x']); shake = 0; announce(`¡BIENVENIDOS A ${STADIUMS[stadiumId].name}!`, '#ffffff'); sfx('whistle');
+        pauseState.active = false; pauseState.left = 0; pauseState.r1 = pauseState.r2 = false; pauseState.cd = 0; uiPause.classList.add('hidden');
         if (net.on && net.host) {
             net.active = true; net.sq = 0; net.lastSnapAt = 0; net.stSel = false; net.correction = null;
-            net.lastRemoteAt = performance.now(); net.statusAt = 0;
+            net.lastRemoteAt = performance.now(); net.statusAt = 0; net.evId = 0; net.lastEv = 0; net.cfSent = false;
             netCtl({ t: 'start', p1: p1Choice.id, p2: p2Choice.id, st: stadiumId, g: settings.goals, tm: settings.time });
         }
         gameState = 'PLAYING'; acc = 0; lastT = performance.now();
@@ -913,7 +1086,7 @@ const ROSTER = [
         document.getElementById('timer-box').textContent = suddenDeath ? 'GOL DE ORO' : `${String(Math.floor(timeRemaining / 60)).padStart(2, '0')}:${String(timeRemaining % 60).padStart(2, '0')}`;
     }
     function showGameOver() {
-        gameState = 'GAMEOVER'; uiHud.classList.add('hidden');
+        gameState = 'GAMEOVER'; uiHud.classList.add('hidden'); uiPause.classList.add('hidden'); pauseState.active = false; pauseState.cd = 0;
         if (net.on && net.host) { net.active = false; netCtl({ t: 'over', sc: [p1Score, p2Score], sx: stats }); }
         if (tour && curMatch) {
             const lw = p1Score > p2Score, win = lw ? curMatch.L : curMatch.R, ab = curMatch.L === curMatch.a ? [p1Score, p2Score] : [p2Score, p1Score];
@@ -942,7 +1115,7 @@ const ROSTER = [
         MESSAGE_TOO_LARGE: 'El mensaje era demasiado grande.'
     };
     const r1 = v => Math.round(v * 10) / 10, r2 = v => Math.round(v * 100) / 100;
-    const netCtl = message => { if (net.on) Net.sendRelay(message); };
+    const netCtl = message => net.on ? Net.sendRelay(message) : false;
 
     // Al volver de otra pestaña no contamos el tiempo que el navegador estuvo
     // pausado como si la conexión se hubiera caído.
@@ -1001,7 +1174,7 @@ const ROSTER = [
         net.role = '';
         Object.assign(net, {
             myChar: null, otherChar: null, stSel: false, rq: 0, iq: 0, lastN: 0, lastInputAt: 0, lastSnapAt: 0,
-            lastSnapRecvAt: 0, lastRemoteAt: 0, statusAt: 0,
+            lastSnapRecvAt: 0, lastRemoteAt: 0, statusAt: 0, evId: 0, lastEv: 0, cfSent: false, prevPb: 0, prevAp: 0, prevSc0: 0, prevSc1: 0, prevSt: '',
             sq: 0, since: 0, base: null, correction: null,
             remote: { left: false, right: false, jump: false, kickHold: false }
         });
@@ -1106,6 +1279,20 @@ const ROSTER = [
             return;
         }
         if (message.k === 's') { netApply(message); return; }
+        if (message.t === 'skip') {
+            if (net.host && net.active && (gameState === 'REPLAY') && goalSide === 1) endReplay();
+            return;
+        }
+        if (message.t === 'pause') {
+            if (!net.host || !net.active) return;
+            if (message.a === 'start') {
+                if (!pauseState.active) pauseStart();
+            } else if (message.a === 'ready') {
+                // invitado es P2
+                if (pauseState.active && pauseState.cd <= 0) { pauseState.r2 = true; pauseMaybeStartCountdown(); updatePauseUI(); }
+            }
+            return;
+        }
         if (message.t === 'pick') {
             net.otherChar = ROSTER.find(c => c.id === message.id);
             if (net.host && net.myChar && !net.stSel) { net.stSel = true; chooseStadium(); }
@@ -1137,13 +1324,26 @@ const ROSTER = [
     function netSendState() {
         if (!net.on) return;
         const P = q => [r1(q.x), r1(q.y), r2(q.vx), r2(q.vy), q.facing, q.kickAnimTimer, Math.round(q.chargeTimer), q.frozen ? 1 : 0];
-        const m = { k: 's', n: ++net.sq, st: gameState, sc: [p1Score, p2Score], tr: timeRemaining, sd: suddenDeath ? 1 : 0, cd: countdown, pf: pauseFrames,
+        const m = { k: 's', n: ++net.sq, st: gameState, sc: [p1Score, p2Score], tr: timeRemaining, sd: suddenDeath ? 1 : 0, cd: countdown, pf: pauseFrames, mf: matchFrames,
             b: [r1(ball.x), r1(ball.y), r2(ball.vx), r2(ball.vy), r2(ball.angle), ball.radius, ball.superType ? SUPERS.indexOf(ball.superType) : -1],
-            p: [P(player1), P(player2)], gh: [r1(goalH[0]), r1(goalH[1])],
+            p: [P(player1), P(player2)], gh: [r1(goalH[0]), r1(goalH[1])], gt: [r1(goalTarget[0]), r1(goalTarget[1])],
             pb: powerupBox.active ? [Math.round(powerupBox.x), Math.round(powerupBox.y), powerupBox.type, Math.round(powerupBox.life)] : 0,
             ap: activePowerup ? [activePowerup.type, activePowerup.timer, activePowerup.max, activePowerup.owner === player1 ? 0 : 1] : 0,
-            sh: r1(shake), fl: flashT > 0 ? [flashT, flashCol] : 0, gs: goalSide, ev: netEv };
-        if (gameState === 'GOAL_PAUSE') m.gi = [goalInfo[0], goalInfo[1], goalInfo[2] ? 1 : 0, goalInfo[3] ? goalInfo[3].id : 0];
+            sh: r1(shake), fl: flashT > 0 ? [flashT, flashCol] : 0, gs: goalSide, ev: netEv,
+            ps: pauseState.active ? [1, Math.round(pauseState.left), pauseState.r1 ? 1 : 0, pauseState.r2 ? 1 : 0, Math.round(pauseState.cd)] : 0 };
+        if (gameState === 'GOAL_PAUSE') {
+            m.gi = [goalInfo[0], goalInfo[1], goalInfo[2] ? 1 : 0, goalInfo[3] ? goalInfo[3].id : 0];
+            if (!net.cfSent) {
+                m.cf = confetti.map(p => [r1(p.x), r1(p.y), r2(p.vx), r2(p.vy), r1(p.rot), r2(p.rs), r1(p.size), CONFETTI_COLS.indexOf(p.color)]);
+                net.cfSent = true;
+            }
+        } else {
+            net.cfSent = false;
+        }
+        // Evita exceder el límite del servidor (16 KB en relay).
+        let payload = JSON.stringify(m);
+        if (payload.length > 15000) { m.ev = []; payload = JSON.stringify(m); }
+        if (payload.length > 15000) { delete m.cf; net.cfSent = false; }
         // Si el envío se descarta por congestión, los efectos quedan para la próxima.
         if (netCtl(m)) netEv = [];
         net.lastSnapAt = performance.now();
@@ -1152,15 +1352,48 @@ const ROSTER = [
     function netApply(m) {
         if (!net.active || m.n <= net.lastN) return; net.lastN = m.n;
         const prev = [[ball.x, ball.y], [player1.x, player1.y], [player2.x, player2.y]];
-        gameState = m.st; p1Score = m.sc[0]; p2Score = m.sc[1]; timeRemaining = m.tr; suddenDeath = !!m.sd; countdown = m.cd; pauseFrames = m.pf;
+        const prevPb = net.prevPb, prevAp = net.prevAp, prevSc0 = net.prevSc0, prevSc1 = net.prevSc1, prevSt = net.prevSt;
+        gameState = m.st; p1Score = m.sc[0]; p2Score = m.sc[1]; timeRemaining = m.tr; suddenDeath = !!m.sd; countdown = m.cd; pauseFrames = m.pf; if (m.mf != null) matchFrames = m.mf;
+        if (m.ps) {
+            pauseState.active = true; pauseState.left = m.ps[1]; pauseState.r1 = !!m.ps[2]; pauseState.r2 = !!m.ps[3]; pauseState.cd = m.ps[4];
+            if (gameState === 'PAUSED') uiPause.classList.remove('hidden');
+            updatePauseUI();
+        } else {
+            if (pauseState.active) {
+                pauseState.active = false; pauseState.left = 0; pauseState.r1 = pauseState.r2 = false; pauseState.cd = 0;
+                uiPause.classList.add('hidden');
+            }
+        }
         const b = m.b; ball.x = b[0]; ball.y = b[1]; ball.vx = b[2]; ball.vy = b[3]; ball.angle = b[4]; ball.radius = b[5]; ball.superType = b[6] >= 0 ? SUPERS[b[6]] : null;
         [player1, player2].forEach((q, i) => { const d = m.p[i]; q.x = d[0]; q.y = d[1]; q.vx = d[2]; q.vy = d[3]; q.facing = d[4]; q.kickAnimTimer = d[5]; q.chargeTimer = d[6]; q.frozen = !!d[7]; });
         goalH = m.gh;
+        if (m.gt) goalTarget = m.gt;
         if (m.pb) Object.assign(powerupBox, { active: true, x: m.pb[0], y: m.pb[1], type: m.pb[2], life: m.pb[3] }); else powerupBox.active = false;
         activePowerup = m.ap ? { type: m.ap[0], timer: m.ap[1], max: m.ap[2], owner: m.ap[3] ? player2 : player1 } : null;
-        shake = m.sh; flashT = m.fl ? m.fl[0] : 0; if (m.fl) flashCol = m.fl[1]; goalSide = m.gs;
+        shake = Math.max(shake, m.sh || 0);
+        if (m.fl) { if (m.fl[0] >= flashT) { flashT = m.fl[0]; flashCol = m.fl[1]; } }
+        goalSide = m.gs;
         if (m.gi) goalInfo = [m.gi[0], m.gi[1], !!m.gi[2], ROSTER.find(c => c.id === m.gi[3])];
-        (m.ev || []).forEach(e => { if (e[0] === 'b') burst(e[1], e[2], e[3], e[4], e[5]); else if (e[0] === 'f') sfx(e[1]); else if (e[0] === 'a') announce(e[1], e[2]); else if (e[0] === 'g') ring(e[1], e[2], e[3], e[4]); });
+        if (m.cf) confetti = m.cf.map(p => ({ x: p[0], y: p[1], vx: p[2], vy: p[3], rot: p[4], rs: p[5], size: p[6], color: typeof p[7] === 'number' ? (CONFETTI_COLS[p[7]] || CONFETTI_COLS[0]) : p[7] }));
+        else if (m.st !== 'GOAL_PAUSE') confetti = [];
+        const oldLastEv = net.lastEv;
+        (m.ev || []).forEach(e => {
+            const seq = e[0], type = e[1];
+            if (seq <= net.lastEv) return; net.lastEv = seq;
+            if (type === 'b') burst(e[2], e[3], e[4], e[5], e[6], e[7] || null);
+            else if (type === 'f') sfx(e[2]);
+            else if (type === 'a') announce(e[2], e[3]);
+            else if (type === 'g') ring(e[2], e[3], e[4], e[5]);
+            else if (type === 'x') { fx = []; }
+        });
+        const gotNewEv = net.lastEv > oldLastEv;
+        // Transiciones de estado como respaldo (si no llegaron eventos nuevos en este snapshot)
+        if (!gotNewEv) {
+            if (!prevPb && m.pb) { burst(powerupBox.x, powerupBox.y, '#ffffff', 26, 9); ring(powerupBox.x, powerupBox.y, '#ffd166', 26); sfx('pu'); }
+            if (!prevAp && m.ap) { const col = (PU_STYLE[m.ap[0]] || ['#ffffff'])[0], o = activePowerup && activePowerup.owner; if (o) { burst(o.x, o.y, col, 40, 10); burst(o.x, o.y, '#ffffff', 16, 6); for (let k = 0; k < 3; k++) ring(o.x, o.y, col, 28 + k * 5); } sfx('pu'); }
+            if ((m.sc[0] !== prevSc0 || m.sc[1] !== prevSc1) && prevSt && prevSt !== 'GOAL_PAUSE' && m.st === 'GOAL_PAUSE') { sfx('goal'); }
+        }
+        net.prevPb = m.pb ? 1 : 0; net.prevAp = m.ap ? 1 : 0; net.prevSc0 = m.sc[0]; net.prevSc1 = m.sc[1]; net.prevSt = m.st;
         const rp = m.st === 'REPLAY' ? 0 : 1; net.since = 0;
         net.base = [[ball.x, ball.y, ball.vx * rp, ball.vy * rp], [player1.x, player1.y, player1.vx * rp, player1.vy * rp], [player2.x, player2.y, player2.vx * rp, player2.vy * rp]];
         // Suaviza el salto entre la posición dibujada y la instantánea nueva.
@@ -1175,11 +1408,20 @@ const ROSTER = [
     }
 
     function guestTick() {
-        matchFrames++; shake *= 0.9; if (banner.timer > 0) banner.timer--;
+        matchFrames++; shake *= 0.9; if (flashT > 0) flashT--; if (banner.timer > 0) banner.timer--;
         fx = fx.filter(p => (p.x += p.vx, p.y += p.vy, p.vy += (p.ring ? 0 : 0.25), p.age = (p.age || 0) + 1, --p.life > 0));
+        for (let s = 0; s < 2; s++) goalH[s] += (goalTarget[s] - goalH[s]) * 0.08;
+        if (pauseState.active && gameState === 'PAUSED') {
+            // pausa sincronizada por host; solo mantenemos UI/efectos visuales mínimos
+            updatePauseUI();
+        }
+        if (gameState === 'GOAL_PAUSE') {
+            confetti.forEach(p => { p.x += p.vx; p.y += p.vy; p.vy += 0.4; p.rot += p.rs; });
+        }
         if (net.base) {
             net.since = Math.min(net.since + 1, netLinkBad() ? 4 : 3);
             [ball, player1, player2].forEach((o, i) => { const b = net.base[i]; o.x = b[0] + b[2] * net.since; o.y = b[1] + b[3] * net.since; });
+            ball.angle += ball.vx / ball.radius * 0.5;
         }
         if (net.correction) {
             [ball, player1, player2].forEach((o, i) => {
@@ -1205,7 +1447,8 @@ const ROSTER = [
         MAX_GOALS = m.g; MATCH_DURATION = m.tm; currentMode = 'PVP';
         player1 = new Player(CW / 4, true, p1Choice, false); player2 = new Player(CW * 3 / 4, false, p2Choice, false); ball = new Ball();
         activePowerup = null; powerupBox.active = false; stats = newStats(); p1Score = p2Score = 0; timeRemaining = m.tm; suddenDeath = false; countdown = 0;
-        fx = []; goalH = [GOAL_H, GOAL_H]; banner.timer = 0; net.lastN = 0; net.base = null; net.correction = null; net.since = 0; net.lastInputAt = 0; net.lastSnapRecvAt = performance.now(); net.statusAt = 0; net.active = true;
+        fx = []; goalH = [GOAL_H, GOAL_H]; goalTarget = [GOAL_H, GOAL_H]; banner.timer = 0; net.lastN = 0; net.lastEv = 0; net.prevPb = 0; net.prevAp = 0; net.prevSc0 = 0; net.prevSc1 = 0; net.prevSt = ''; net.base = null; net.correction = null; net.since = 0; net.lastInputAt = 0; net.lastSnapRecvAt = performance.now(); net.statusAt = 0; net.active = true;
+        pauseState.active = false; pauseState.left = 0; pauseState.r1 = pauseState.r2 = false; pauseState.cd = 0; uiPause.classList.add('hidden');
         uiHud.classList.remove('hidden'); if (touchOn) { touchEl.classList.remove('hidden'); touchEl.classList.add('solo'); }
         gameState = 'PLAYING'; acc = 0; lastT = performance.now(); startMusic();
     }
@@ -1247,7 +1490,11 @@ const ROSTER = [
                 status.textContent = text;
                 return;
             }
-            showInfo(`<h2 class="text-2xl text-pink-400 mb-4 text-center">NO SE PUDO CONECTAR</h2><p class="text-xs text-gray-300 mb-6 text-center">${text}</p><button class="arcade-btn" onclick="showOnline()">REINTENTAR</button><button class="${BTN}" onclick="goToMenu()">VOLVER</button>`);
+            if (net.active && message.code === 'MESSAGE_TOO_LARGE') {
+                console.warn('Mensaje de red descartado por tamaño:', message);
+                return;
+            }
+            netLost(text);
         });
 
         Net.on('close', () => { if (net.on || net.active) netLost(); });
