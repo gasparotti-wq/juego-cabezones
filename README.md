@@ -65,6 +65,12 @@ npm start
 
 El súper no tiene tecla propia: se carga manteniendo el botón de patear. En los modos contra la CPU se puede usar cualquiera de los dos conjuntos de teclas. En pantallas táctiles aparecen los controles en pantalla.
 
+En **CPU, 1 vs 1 local y torneos**, `P` o `Esc` pausan y volver a apretar reanuda al instante. En **LAN**, la pausa es coordinada: dura hasta 25 segundos y ambos jugadores deben confirmar **LISTO** (o esperar a que se agote el tiempo) para volver al juego; `P/Esc` no la cierra.
+
+Desde el menú de pausa podés **REINICIAR PARTIDO** tocando el botón dos veces: el primer toque lo arma (`¿CONFIRMAR REINICIO?`) y el segundo lo ejecuta. Vuelve a empezar con los mismos personajes y ajustes, marcador y reloj en cero; en un torneo se repite el partido actual sin avanzar el cuadro. En **LAN** lo tienen que confirmar los dos jugadores y el anfitrión lo ejecuta; si se agota el tiempo de pausa antes, el partido se reanuda y el pedido se descarta.
+
+Durante la repetición del gol, contra la **CPU** podés saltearla con `F`, `Espacio` o `Enter` tanto si hiciste el gol como si te lo hicieron. En 1 vs 1 y LAN la saltea quien concedió el gol.
+
 ## Modos
 
 - 1 vs CPU, con dificultad fácil, normal o difícil.
@@ -73,15 +79,16 @@ El súper no tiene tecla propia: se carga manteniendo el botón de patear. En lo
 - Torneo 1 vs 1 con 2, 4 u 8 jugadores humanos; la CPU completa el cuadro.
 - **Jugar en LAN** 1 vs 1: un jugador crea la sala y comparte un código de 4 caracteres.
 - Ajustes de duración, goles para ganar, música, efectos y controles táctiles.
-- 4 estadios, 14 personajes, power-ups, súper tiros, repeticiones, muerte súbita y estadísticas.
+- 4 estadios, 14 personajes (con opción **ALEATORIO** en la selección de personaje y de estadio), power-ups, súper tiros, repeticiones, muerte súbita y estadísticas.
 
 ## Cómo jugar en LAN
 
 1. Los dos abren el juego desde el servidor (`http://IP:3000`).
 2. Uno elige **JUGAR EN LAN → CREAR SALA**. Aparece un código de 4 caracteres (por ejemplo `K7Q2`) y un botón para copiarlo.
 3. El otro elige **JUGAR EN LAN → UNIRME**, escribe el código y toca **UNIRME**.
-4. El anfitrión configura duración y goles, y cada uno elige su personaje. Cuando el anfitrión elige el estadio, empieza el partido.
-5. Al terminar, el anfitrión puede pedir **REVANCHA**. Si alguien sale, el otro recibe el aviso y vuelve al menú.
+4. El anfitrión configura duración y goles, y cada uno elige su personaje (o **ALEATORIO**). Cuando el anfitrión elige el estadio (o **ALEATORIO**), empieza el partido.
+5. Para pausar, cualquiera aprieta `P` o `Esc`. Aparece el cartel de pausa de LAN con el tiempo restante y el estado de cada jugador; los dos tienen que confirmar **LISTO** (botón, o `F/Espacio` quien juega de P1 y `Enter` quien juega de P2) para reanudar. Si nadie confirma, se reanuda solo al terminar el tiempo. Para reiniciar el partido, cada uno toca dos veces **REINICIAR PARTIDO**; cuando ambos confirman, el anfitrión lo reinicia.
+6. Al terminar, el anfitrión puede pedir **REVANCHA**. Si alguien sale, el otro recibe el aviso y vuelve al menú.
 
 No se copian códigos largos ni se configura nada: la sala se crea y se une sola.
 
@@ -155,7 +162,7 @@ Mensajes JSON del cliente al servidor:
 
 Mensajes del servidor al cliente: `room` (código y rol), `peer` (`joined`/`left`), `relay`, `pong` y `error` (con `code` como `ROOM_NOT_FOUND`, `ROOM_FULL`, `BAD_CODE`, etc.).
 
-Dentro del `relay` viajan los mensajes del juego: `pick`, `start`, `over`, `k` (estado del anfitrión) e `i` (entrada del invitado).
+Dentro del `relay` viajan los mensajes del juego: `pick`, `start`, `over`, `s` (instantáneas del anfitrión), `i` (entrada del invitado), `pause` (pedido de pausa, confirmación de reanudación y `restart_ready` de reinicio) y `skip` (saltear la repetición).
 
 ## Pruebas
 

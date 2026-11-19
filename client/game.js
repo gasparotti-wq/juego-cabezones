@@ -114,17 +114,10 @@ const ROSTER = [
         keys[e.code] = true;
         if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', 'Slash'].includes(e.code)) e.preventDefault();
         if ((e.code === 'KeyP' || e.code === 'Escape') && !e.repeat) togglePause();
-        if (pauseState.active && !e.repeat && pauseState.cd <= 0) {
-            if (net.on) {
-                const my = localPauseSide();
-                const p1Keys = ['KeyF', 'KeyG', 'Space']; const p2Keys = ['Enter', 'NumpadEnter', 'Numpad0', 'Period', 'Slash'];
-                if ((my === 1 ? p1Keys : p2Keys).includes(e.code)) pauseSetReady(my);
-            } else if (currentMode === 'CPU') {
-                if (['KeyF', 'KeyG', 'Space', 'Enter', 'NumpadEnter', 'Numpad0', 'Period', 'Slash'].includes(e.code)) pauseSetReady(1);
-            } else {
-                if (['KeyF', 'KeyG', 'Space'].includes(e.code)) pauseSetReady(1);
-                if (['Enter', 'NumpadEnter', 'Numpad0', 'Period', 'Slash'].includes(e.code)) pauseSetReady(2);
-            }
+        if (net.on && pauseState.active && !e.repeat && pauseState.cd <= 0) {
+            const my = localPauseSide();
+            const readyKeys = my === 1 ? ['KeyF', 'KeyG', 'Space'] : ['Enter', 'NumpadEnter', 'Numpad0', 'Period', 'Slash'];
+            if (readyKeys.includes(e.code)) pauseSetReady(my);
         }
         if (gameState === 'REPLAY' && !e.repeat) trySkipReplay(e.code);
     });
@@ -500,9 +493,8 @@ const ROSTER = [
     function concedingSide() { return goalSide === 0 ? 1 : goalSide === 1 ? 2 : 0; }
     function canSkipReplaySide(side) {
         if (gameState !== 'REPLAY') return false;
-        const c = concedingSide();
-        if (currentMode === 'CPU') return c === 1; // humano es P1
-        return side === c;
+        if (currentMode === 'CPU') return side === 1; // humano es P1: puede saltear siempre, haya hecho gol o no
+        return side === concedingSide();
     }
     function requestReplaySkip(side) {
         if (gameState !== 'REPLAY') return;
@@ -706,28 +698,70 @@ const ROSTER = [
         });
         ctx.save(); ctx.shadowColor = '#fff'; ctx.shadowBlur = 12; ctx.fillStyle = '#fff'; fit(timeText(), 34, 220); ctx.fillText(timeText(), CW / 2, 98); ctx.restore();
     }
+    let prePause = 'PLAYING';
+    const pauseState = { active: false, left: 0, r1: false, r2: false, cd: 0, rr1: false, rr2: false, armed: false, sent: false };
+    function pauseCanStart() { return ['PLAYING', 'GOAL_PAUSE', 'REPLAY'].includes(gameState); }
+    function localPauseSide() { if (net.on) return net.host ? 1 : 2; return 0; }
+    function resetRestartConfirm() { pauseState.rr1 = pauseState.rr2 = pauseState.armed = pauseState.sent = false; }
+    function clearPause() {
+        pauseState.active = false; pauseState.left = 0; pauseState.r1 = pauseState.r2 = false; pauseState.cd = 0;
+        resetRestartConfirm();
+        uiPause.classList.add('hidden');
+    }
+    function setPauseUI(lan) {
+        const lanBox = document.getElementById('pause-lan');
+        const simpleHint = document.getElementById('pause-simple-hint');
+        const restartBox = document.getElementById('pause-restart');
+        const restartStatus = document.getElementById('pause-restart-status');
+        const restartHint = document.getElementById('pause-restart-hint');
+        if (lanBox) lanBox.classList.toggle('hidden', !lan);
+        if (simpleHint) simpleHint.classList.toggle('hidden', lan);
+        if (restartBox) restartBox.classList.toggle('local', !lan);
+        if (restartStatus) restartStatus.classList.toggle('hidden', !lan);
+        if (restartHint) restartHint.textContent = lan ? 'Los dos deben confirmar con dos toques' : 'Tocá dos veces para confirmar';
+        updatePauseUI();
+    }
     function togglePause() {
-        if (pauseState.active) {
-            // En pausa temporizada no se cierra con ESC; usar "listo"
+        if (net.on) {
+            // En LAN la pausa es temporizada: no se cierra con P/Esc, hace falta confirmar "listo".
+            if (pauseState.active) return;
+            pauseRequestStart();
             return;
         }
-        if (net.on) { pauseRequestStart(); return; }
-        pauseStart();
+        if (gameState === 'PAUSED') { pauseResume(); return; }
+        if (!pauseCanStart()) return;
+        prePause = gameState; gameState = 'PAUSED';
+        for (const k in keys) keys[k] = false;
+        setPauseUI(false); uiPause.classList.remove('hidden');
     }
-    let prePause = 'PLAYING';
-    const pauseState = { active: false, left: 0, r1: false, r2: false, cd: 0 };
-    function canPauseNow() { return ['PLAYING', 'GOAL_PAUSE', 'REPLAY'].includes(gameState) || (gameState === 'PAUSED' && pauseState.active); }
-    function localPauseSide() { if (net.on) return net.host ? 1 : 2; return 0; }
+    function pauseResume() {
+        pauseState.active = false; pauseState.left = 0; pauseState.r1 = pauseState.r2 = false; pauseState.cd = 0;
+        resetRestartConfirm();
+        gameState = prePause || 'PLAYING'; uiPause.classList.add('hidden'); acc = 0; lastT = performance.now();
+        for (const k in keys) keys[k] = false;
+    }
+
+    // ---- LAN: pausa temporizada, confirmada por ambos jugadores ----
+    function pauseStart() {
+        if (!pauseCanStart() || pauseState.active) return;
+        prePause = gameState; gameState = 'PAUSED';
+        pauseState.active = true; pauseState.left = 1500; pauseState.r1 = false; pauseState.r2 = false; pauseState.cd = 0;
+        resetRestartConfirm();
+        for (const k in keys) keys[k] = false;
+        setPauseUI(true); uiPause.classList.remove('hidden'); updatePauseUI();
+    }
+    function pauseRequestStart() {
+        if (!net.on) return;
+        if (net.host) pauseStart();
+        else netCtl({ t: 'pause', a: 'start' });
+    }
     function pauseSetReady(side) {
-        if (!pauseState.active || pauseState.cd > 0) return;
-        if (!side) {
-            if (net.on) side = localPauseSide();
-            else if (currentMode === 'CPU') side = 1;
-            else return; // 1v1 local: usar teclas por jugador
-        }
-        if (net.on && !net.host) { netCtl({ t: 'pause', a: 'ready', s: side }); return; }
+        if (!net.on || !pauseState.active || pauseState.cd > 0) return;
+        if (!side) side = localPauseSide();
+        pauseState.armed = false; // confirmar la reanudación cancela un reinicio a medias
+        if (!net.host) { netCtl({ t: 'pause', a: 'ready', s: side }); return; }
         if (side === 1) pauseState.r1 = true; if (side === 2) pauseState.r2 = true;
-        if (net.on && net.host) netCtl({ t: 'pause', s: side }); // opcional, sync por snapshot
+        netCtl({ t: 'pause', s: side }); // opcional, sync por snapshot
         pauseMaybeStartCountdown();
         updatePauseUI();
     }
@@ -735,30 +769,35 @@ const ROSTER = [
         if (!pauseState.active || pauseState.cd > 0) return;
         if (pauseState.r1 && pauseState.r2) pauseState.cd = 180;
     }
-    function pauseResume() {
-        pauseState.active = false; pauseState.left = 0; pauseState.r1 = pauseState.r2 = false; pauseState.cd = 0;
-        gameState = prePause || 'PLAYING'; uiPause.classList.add('hidden'); acc = 0; lastT = performance.now();
-        for (const k in keys) keys[k] = false;
-    }
-    function pauseStart() {
-        if (!['PLAYING', 'GOAL_PAUSE', 'REPLAY'].includes(gameState)) return;
-        if (pauseState.active) return;
-        prePause = gameState; gameState = 'PAUSED'; pauseState.active = true; pauseState.left = 1500; pauseState.r1 = false; pauseState.r2 = false; pauseState.cd = 0;
-        if (currentMode === 'CPU') pauseState.r2 = true; // CPU lista automáticamente
-        for (const k in keys) keys[k] = false;
-        uiPause.classList.remove('hidden'); updatePauseUI();
-    }
-    function pauseRequestStart() {
-        if (net.on) {
-            if (net.host) pauseStart();
-            else netCtl({ t: 'pause', a: 'start' });
-            return;
+
+    // ---- Reiniciar el partido desde la pausa (doble toque; en LAN lo confirman los dos) ----
+    function pauseRestartClick() {
+        if (gameState !== 'PAUSED' || (net.on && pauseState.cd > 0)) return;
+        if (!pauseState.armed) { pauseState.armed = true; updatePauseUI(); return; }
+        pauseState.armed = false;
+        if (!net.on) { restartMatch(); return; }
+        if (net.host) {
+            pauseState.rr1 = true;
+            pauseMaybeRestart();
+        } else if (!pauseState.sent) {
+            pauseState.sent = true;
+            netCtl({ t: 'pause', a: 'restart_ready' });
         }
-        pauseStart();
+        updatePauseUI();
     }
+    function restartMatch() {
+        if (net.on && !net.host) return;
+        initMatch(); // resetea marcador/tiempo/estadísticas y, en LAN, avisa con "start"
+    }
+    function pauseMaybeRestart() {
+        if (!net.host || !pauseState.active) return;
+        if (pauseState.rr1 && pauseState.rr2) restartMatch();
+    }
+
     function updatePauseUI() {
         if (!uiPause) return;
         const tEl = document.getElementById('pause-timer'), p1 = document.getElementById('pause-p1'), p2 = document.getElementById('pause-p2'), hint = document.getElementById('pause-hint'), btn = document.getElementById('pause-ready-btn');
+        const rBtn = document.getElementById('pause-restart-btn'), rr1El = document.getElementById('pause-rr1'), rr2El = document.getElementById('pause-rr2');
         if (pauseState.cd > 0) {
             if (tEl) tEl.textContent = 'Reanudando en ' + Math.ceil(pauseState.cd / 60) + '...';
             if (hint) hint.textContent = '¡Preparados!';
@@ -769,18 +808,18 @@ const ROSTER = [
         if (p1) { p1.textContent = pauseState.r1 ? 'LISTO' : 'NO LISTO'; p1.style.color = pauseState.r1 ? '#9dff4a' : '#9ca3af'; }
         if (p2) { p2.textContent = pauseState.r2 ? 'LISTO' : 'NO LISTO'; p2.style.color = pauseState.r2 ? '#9dff4a' : '#9ca3af'; }
         if (btn) {
-            if (net.on) {
-                const mine = localPauseSide();
-                const ready = mine === 1 ? pauseState.r1 : pauseState.r2;
-                btn.textContent = ready ? 'ESPERANDO...' : 'LISTO';
-                btn.disabled = ready || pauseState.cd > 0;
-            } else if (currentMode === 'CPU') {
-                btn.textContent = pauseState.r1 ? 'ESPERANDO...' : 'LISTO';
-                btn.disabled = pauseState.r1 || pauseState.cd > 0;
-            } else {
-                btn.textContent = 'F = P1 LISTO / ENTER = P2 LISTO';
-                btn.disabled = true;
-            }
+            const mine = localPauseSide();
+            const ready = mine === 1 ? pauseState.r1 : pauseState.r2;
+            btn.textContent = ready ? 'ESPERANDO...' : 'LISTO';
+            btn.disabled = ready || pauseState.cd > 0;
+        }
+        if (rr1El) { rr1El.textContent = pauseState.rr1 ? 'LISTO' : 'NO LISTO'; rr1El.style.color = pauseState.rr1 ? '#9dff4a' : '#9ca3af'; }
+        if (rr2El) { rr2El.textContent = pauseState.rr2 ? 'LISTO' : 'NO LISTO'; rr2El.style.color = pauseState.rr2 ? '#9dff4a' : '#9ca3af'; }
+        if (rBtn) {
+            const mine = localPauseSide();
+            const waiting = net.on && (mine === 1 ? pauseState.rr1 : (pauseState.sent || pauseState.rr2));
+            rBtn.textContent = waiting ? 'ESPERANDO...' : (pauseState.armed ? '¿CONFIRMAR REINICIO?' : 'REINICIAR PARTIDO');
+            rBtn.disabled = waiting || (net.on && pauseState.cd > 0);
         }
     }
     const GOAL_THEME = [
@@ -882,14 +921,12 @@ const ROSTER = [
             if (Math.floor(matchFrames / 20) % 2) { ctx.fillStyle = '#ef233c'; ctx.beginPath(); ctx.arc(40, CH - 15, 8, 0, 7); ctx.fill(); }
             ctx.fillStyle = '#fff'; ctx.fillText('REPETICIÓN', 60, CH - 15);
             const cs = concedingSide();
-            let can = false;
+            let can = true, hint = cs === 1 ? 'F / ESPACIO PARA SALTEAR' : 'ENTER PARA SALTEAR';
             if (net.on) can = (net.host ? 1 : 2) === cs;
-            else if (currentMode === 'CPU') can = cs === 1;
-            else can = true; // local: depende de la tecla usada, mostramos pista general
+            else if (currentMode === 'CPU') hint = 'F / ESPACIO / ENTER PARA SALTEAR';
             ctx.textAlign = 'right'; ctx.font = '13px "Press Start 2P", monospace';
             if (net.on && !can) ctx.fillText('ESPERANDO AL RIVAL...', CW - 30, CH - 15);
-            else if (can) ctx.fillText(cs === 1 ? 'F / ESPACIO PARA SALTEAR' : 'ENTER PARA SALTEAR', CW - 30, CH - 15);
-            else ctx.fillText('', CW - 30, CH - 15);
+            else if (can) ctx.fillText(hint, CW - 30, CH - 15);
         }
         ctx.restore();
     }
@@ -947,6 +984,15 @@ const ROSTER = [
             div.onclick = () => selectChar(char);
             grid.appendChild(div);
         });
+        const randomDiv = document.createElement('div');
+        randomDiv.className = 'char-card random text-white font-bold';
+        randomDiv.innerHTML = `<div class="char-color-preview">🎲</div><div class="char-name">ALEATORIO</div>`;
+        randomDiv.onclick = selectRandomChar;
+        grid.appendChild(randomDiv);
+    }
+    function selectRandomChar() {
+        const available = ROSTER.filter(c => !picks.some(p => p.id === c.id));
+        if (available.length) selectChar(pick(available));
     }
 
     const info = document.getElementById('ui-info');
@@ -956,7 +1002,7 @@ const ROSTER = [
     function hideAll() { [uiMenu, uiSelect, uiGameover, uiPause, info, touchEl].forEach(e => e.classList.add('hidden')); uiHud.classList.add('hidden'); }
     function showInfo(html) { hideAll(); info.innerHTML = html; info.classList.remove('hidden'); }
     const BTN = 'arcade-btn mt-4 text-sm py-2 px-6';
-    function goToMenu() { if (net.on || net.active || (window.CabezonesNet && window.CabezonesNet.isOpen())) netClose(); pauseState.active = false; pauseState.left = 0; pauseState.r1 = pauseState.r2 = false; pauseState.cd = 0; hideAll(); gameState = 'MENU'; tour = null; curMatch = null; uiMenu.classList.remove('hidden'); }
+    function goToMenu() { if (net.on || net.active || (window.CabezonesNet && window.CabezonesNet.isOpen())) netClose(); clearPause(); hideAll(); gameState = 'MENU'; tour = null; curMatch = null; uiMenu.classList.remove('hidden'); }
     const TOUR_SIZE = 8; // cuartos de final; para ampliar el torneo (16 = octavos) alcanza con cambiar este número
     function startSelection(mode, tourney) {
         flow = { mode, tour: !!tourney, size: TOUR_SIZE, humans: mode === 'CPU' ? 1 : 2 }; currentMode = mode; gameState = 'SELECT';
@@ -1012,6 +1058,11 @@ const ROSTER = [
             d.onclick = () => { stadiumId = i; applyStadiumCrowd(); startFlow(); };
             document.getElementById('st-grid').appendChild(d);
         });
+        const randomStadium = document.createElement('div');
+        randomStadium.className = 'st-card random';
+        randomStadium.innerHTML = `<div class="st-random-icon">🎲</div><b>ALEATORIO</b><small>Que lo decida el dado</small>`;
+        randomStadium.onclick = () => { stadiumId = Math.floor(Math.random() * STADIUMS.length); applyStadiumCrowd(); startFlow(); };
+        document.getElementById('st-grid').appendChild(randomStadium);
     }
     function startFlow() {
         if (flow.online) { p1Choice = net.myChar; p2Choice = net.otherChar; currentMode = 'PVP'; initMatch(); return; }
@@ -1072,7 +1123,7 @@ const ROSTER = [
         ball = new Ball(); updateScoreUI(); stats = newStats(); rec = []; replayData = null; startMusic();
         if (currentMode === 'CPU') { player2.lvl = settings.lvl; player2.baseSpeed = player2.moveSpeed = MOVE_SPEED * [0.72, 0.9, 1.05][settings.lvl]; }
         countdown = 180; fx = []; pushEv(['x']); shake = 0; announce(`¡BIENVENIDOS A ${STADIUMS[stadiumId].name}!`, '#ffffff'); sfx('whistle');
-        pauseState.active = false; pauseState.left = 0; pauseState.r1 = pauseState.r2 = false; pauseState.cd = 0; uiPause.classList.add('hidden');
+        clearPause();
         if (net.on && net.host) {
             net.active = true; net.sq = 0; net.lastSnapAt = 0; net.stSel = false; net.correction = null;
             net.lastRemoteAt = performance.now(); net.statusAt = 0; net.evId = 0; net.lastEv = 0; net.cfSent = false;
@@ -1086,7 +1137,7 @@ const ROSTER = [
         document.getElementById('timer-box').textContent = suddenDeath ? 'GOL DE ORO' : `${String(Math.floor(timeRemaining / 60)).padStart(2, '0')}:${String(timeRemaining % 60).padStart(2, '0')}`;
     }
     function showGameOver() {
-        gameState = 'GAMEOVER'; uiHud.classList.add('hidden'); uiPause.classList.add('hidden'); pauseState.active = false; pauseState.cd = 0;
+        gameState = 'GAMEOVER'; uiHud.classList.add('hidden'); clearPause();
         if (net.on && net.host) { net.active = false; netCtl({ t: 'over', sc: [p1Score, p2Score], sx: stats }); }
         if (tour && curMatch) {
             const lw = p1Score > p2Score, win = lw ? curMatch.L : curMatch.R, ab = curMatch.L === curMatch.a ? [p1Score, p2Score] : [p2Score, p1Score];
@@ -1186,6 +1237,7 @@ const ROSTER = [
         const wasOnline = net.on || net.active;
         netClose();
         if (!wasOnline) return;
+        clearPause();
         hideAll();
         gameState = 'MENU';
         showInfo(`<h2 class="text-2xl text-pink-400 mb-4 text-center">SE CORTÓ LA PARTIDA</h2><p class="text-xs text-gray-300 mb-6 text-center leading-relaxed">${message || 'Tu rival se desconectó.'}</p><button class="arcade-btn" onclick="goToMenu()">MENÚ PRINCIPAL</button>`);
@@ -1290,6 +1342,9 @@ const ROSTER = [
             } else if (message.a === 'ready') {
                 // invitado es P2
                 if (pauseState.active && pauseState.cd <= 0) { pauseState.r2 = true; pauseMaybeStartCountdown(); updatePauseUI(); }
+            } else if (message.a === 'restart_ready' && !pauseState.rr2) {
+                // invitado confirmó el reinicio: el host lo ejecuta cuando ambos estén listos
+                if (pauseState.active) { pauseState.rr2 = true; pauseMaybeRestart(); updatePauseUI(); }
             }
             return;
         }
@@ -1330,7 +1385,7 @@ const ROSTER = [
             pb: powerupBox.active ? [Math.round(powerupBox.x), Math.round(powerupBox.y), powerupBox.type, Math.round(powerupBox.life)] : 0,
             ap: activePowerup ? [activePowerup.type, activePowerup.timer, activePowerup.max, activePowerup.owner === player1 ? 0 : 1] : 0,
             sh: r1(shake), fl: flashT > 0 ? [flashT, flashCol] : 0, gs: goalSide, ev: netEv,
-            ps: pauseState.active ? [1, Math.round(pauseState.left), pauseState.r1 ? 1 : 0, pauseState.r2 ? 1 : 0, Math.round(pauseState.cd)] : 0 };
+            ps: pauseState.active ? [1, Math.round(pauseState.left), pauseState.r1 ? 1 : 0, pauseState.r2 ? 1 : 0, Math.round(pauseState.cd), pauseState.rr1 ? 1 : 0, pauseState.rr2 ? 1 : 0] : 0 };
         if (gameState === 'GOAL_PAUSE') {
             m.gi = [goalInfo[0], goalInfo[1], goalInfo[2] ? 1 : 0, goalInfo[3] ? goalInfo[3].id : 0];
             if (!net.cfSent) {
@@ -1356,13 +1411,11 @@ const ROSTER = [
         gameState = m.st; p1Score = m.sc[0]; p2Score = m.sc[1]; timeRemaining = m.tr; suddenDeath = !!m.sd; countdown = m.cd; pauseFrames = m.pf; if (m.mf != null) matchFrames = m.mf;
         if (m.ps) {
             pauseState.active = true; pauseState.left = m.ps[1]; pauseState.r1 = !!m.ps[2]; pauseState.r2 = !!m.ps[3]; pauseState.cd = m.ps[4];
-            if (gameState === 'PAUSED') uiPause.classList.remove('hidden');
+            pauseState.rr1 = !!m.ps[5]; pauseState.rr2 = !!m.ps[6];
+            if (gameState === 'PAUSED') { setPauseUI(true); uiPause.classList.remove('hidden'); }
             updatePauseUI();
         } else {
-            if (pauseState.active) {
-                pauseState.active = false; pauseState.left = 0; pauseState.r1 = pauseState.r2 = false; pauseState.cd = 0;
-                uiPause.classList.add('hidden');
-            }
+            if (pauseState.active) clearPause();
         }
         const b = m.b; ball.x = b[0]; ball.y = b[1]; ball.vx = b[2]; ball.vy = b[3]; ball.angle = b[4]; ball.radius = b[5]; ball.superType = b[6] >= 0 ? SUPERS[b[6]] : null;
         [player1, player2].forEach((q, i) => { const d = m.p[i]; q.x = d[0]; q.y = d[1]; q.vx = d[2]; q.vy = d[3]; q.facing = d[4]; q.kickAnimTimer = d[5]; q.chargeTimer = d[6]; q.frozen = !!d[7]; });
@@ -1448,7 +1501,7 @@ const ROSTER = [
         player1 = new Player(CW / 4, true, p1Choice, false); player2 = new Player(CW * 3 / 4, false, p2Choice, false); ball = new Ball();
         activePowerup = null; powerupBox.active = false; stats = newStats(); p1Score = p2Score = 0; timeRemaining = m.tm; suddenDeath = false; countdown = 0;
         fx = []; goalH = [GOAL_H, GOAL_H]; goalTarget = [GOAL_H, GOAL_H]; banner.timer = 0; net.lastN = 0; net.lastEv = 0; net.prevPb = 0; net.prevAp = 0; net.prevSc0 = 0; net.prevSc1 = 0; net.prevSt = ''; net.base = null; net.correction = null; net.since = 0; net.lastInputAt = 0; net.lastSnapRecvAt = performance.now(); net.statusAt = 0; net.active = true;
-        pauseState.active = false; pauseState.left = 0; pauseState.r1 = pauseState.r2 = false; pauseState.cd = 0; uiPause.classList.add('hidden');
+        clearPause();
         uiHud.classList.remove('hidden'); if (touchOn) { touchEl.classList.remove('hidden'); touchEl.classList.add('solo'); }
         gameState = 'PLAYING'; acc = 0; lastT = performance.now(); startMusic();
     }
@@ -1461,6 +1514,7 @@ const ROSTER = [
             net.host = message.role === 'host';
             flow = { mode: 'PVP', tour: false, online: true, size: TOUR_SIZE, humans: 2 };
             currentMode = 'PVP';
+            clearPause();
             gameState = 'SELECT';
             startMusic();
             if (net.host) {
